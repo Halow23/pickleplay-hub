@@ -65,6 +65,11 @@ function formatGameTime(timestamp: number) {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(timestamp));
 }
 
+function ProfileNotificationShortcut({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return <a href="/settings/notifications" className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-2 rounded-full bg-[#19473e] px-4 py-3 text-sm font-bold text-white shadow-[0_12px_28px_rgba(25,71,62,.24)] transition hover:bg-[#123b33] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6d36a] focus-visible:ring-offset-2"><Bell className="h-4 w-4" /> Notification settings</a>;
+}
+
 function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
@@ -276,6 +281,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#f5f3eb] text-[#173d35]">
+      <ProfileNotificationShortcut visible={isAuthenticated && activeView === "profile"} />
       <div className="pointer-events-none fixed inset-x-0 top-0 h-[460px] bg-[radial-gradient(circle_at_75%_5%,rgba(250,219,115,0.26),transparent_28%),radial-gradient(circle_at_14%_20%,rgba(150,192,166,0.24),transparent_30%)]" />
 
       <header className="sticky top-0 z-40 border-b border-[#e0e2d8]/80 bg-[#f5f3eb]/85 backdrop-blur-xl">

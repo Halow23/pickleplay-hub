@@ -404,9 +404,13 @@ export async function sendGameUpdate(user: { id: number; role: "user" | "player"
 
   const attendees = await db.select({ userId: rsvps.userId }).from(rsvps).where(and(eq(rsvps.gameId, gameId), inArray(rsvps.state, ["confirmed", "waitlisted"])));
   if (attendees.length) {
-    await persistInAppDeliveries(db, attendees.map(attendee => organizerUpdateDelivery(attendee.userId, gameId, message)));
+    const preferenceRows = await db.select({ userId: notificationPreferences.userId, inAppEnabled: notificationPreferences.inAppEnabled, gameUpdatesEnabled: notificationPreferences.gameUpdatesEnabled, waitlistUpdatesEnabled: notificationPreferences.waitlistUpdatesEnabled }).from(notificationPreferences).where(inArray(notificationPreferences.userId, attendees.map(attendee => attendee.userId)));
+    const preferencesByUser = new Map(preferenceRows.map(preference => [preference.userId, preference]));
+    const deliveries = attendees.map(attendee => organizerUpdateDelivery(attendee.userId, gameId, message)).filter(delivery => shouldDeliverInApp(preferencesByUser.get(delivery.userId) || { inAppEnabled: true, gameUpdatesEnabled: true, waitlistUpdatesEnabled: true }, delivery.type));
+    if (deliveries.length) await persistInAppDeliveries(db, deliveries);
+    return { recipientCount: deliveries.length };
   }
-  return { recipientCount: attendees.length };
+  return { recipientCount: 0 };
 }
 
 export async function markNotificationsRead(userId: number) {
