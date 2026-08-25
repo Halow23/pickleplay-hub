@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { listReportsForReviewer, setReportReviewStatus } from "./moderationService";
+import { assertOpenReportTransition, canApplyReportSanction, listReportsForReviewer, setReportReviewStatus } from "./moderationService";
 
 describe("moderation review service", () => {
   it("rejects a player or organizer before any report query is executed", async () => {
@@ -15,5 +15,20 @@ describe("moderation review service", () => {
     await expect(listReportsForReviewer(repository, "moderator")).resolves.toEqual([{ id: 4 }]);
     await expect(setReportReviewStatus(repository, "admin", 4, "reviewing")).resolves.toEqual({ updated: true });
     expect(repository.setReportStatus).toHaveBeenCalledWith(4, "reviewing");
+  });
+
+  it("allows moderators to document proportionate sanctions but reserves bans for administrators", () => {
+    expect(canApplyReportSanction("moderator", "warning")).toBe(true);
+    expect(canApplyReportSanction("moderator", "suspension")).toBe(true);
+    expect(canApplyReportSanction("moderator", "ban")).toBe(false);
+    expect(canApplyReportSanction("admin", "ban")).toBe(true);
+    expect(canApplyReportSanction("player", "warning")).toBe(false);
+  });
+
+  it("blocks assignment and resolution transitions once a report is closed", () => {
+    expect(() => assertOpenReportTransition("open", "assign")).not.toThrow();
+    expect(() => assertOpenReportTransition("reviewing", "resolve")).not.toThrow();
+    expect(() => assertOpenReportTransition("closed", "assign")).toThrow("Closed reports cannot be assigned.");
+    expect(() => assertOpenReportTransition("closed", "resolve")).toThrow("already been resolved");
   });
 });

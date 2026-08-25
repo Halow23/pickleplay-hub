@@ -4,15 +4,17 @@ import { applyRsvpAction, StoredRsvp } from "./rsvpService";
 function createTransaction(initial: StoredRsvp[], capacity: number) {
   const rsvps = [...initial];
   const notifications: Array<{ type: string; userId: number }> = [];
+  const createKeys: Array<string | undefined> = [];
   let id = rsvps.reduce((highest, rsvp) => Math.max(highest, rsvp.id), 0) + 1;
   return {
     capacity,
     rsvps,
     notifications,
+    createKeys,
     transaction: {
       findExisting: async (userId: number) => rsvps.find(rsvp => rsvp.userId === userId),
       countConfirmed: async () => rsvps.filter(rsvp => rsvp.state === "confirmed").length,
-      create: async (userId: number, state: "confirmed" | "waitlisted") => { rsvps.push({ id: id++, userId, state }); },
+      create: async (userId: number, state: "confirmed" | "waitlisted", idempotencyKey?: string) => { createKeys.push(idempotencyKey); rsvps.push({ id: id++, userId, state }); },
       remove: async (targetId: number) => { const index = rsvps.findIndex(rsvp => rsvp.id === targetId); if (index >= 0) rsvps.splice(index, 1); },
       findEarliestWaitlisted: async () => rsvps.find(rsvp => rsvp.state === "waitlisted"),
       promote: async (targetId: number) => { const target = rsvps.find(rsvp => rsvp.id === targetId); if (target) target.state = "confirmed"; },
@@ -34,6 +36,12 @@ describe("persisted RSVP transaction behavior", () => {
     await expect(applyRsvpAction(state.transaction, { userId: 11, gameId: 20, gameTitle: "Open play", capacity: state.capacity, action: "join" })).resolves.toMatchObject({ state: "waitlisted", changed: true });
     expect(state.rsvps).toMatchObject([{ userId: 10, state: "confirmed" }, { userId: 11, state: "waitlisted" }]);
     expect(state.notifications).toMatchObject([{ userId: 11, type: "game_confirmed", title: "You’re on the waitlist" }]);
+  });
+
+  it("passes a caller idempotency key into the persisted RSVP create operation", async () => {
+    const state = createTransaction([], 2);
+    await applyRsvpAction(state.transaction, { userId: 11, gameId: 20, gameTitle: "Open play", capacity: state.capacity, action: "join", idempotencyKey: "join-request-0001" });
+    expect(state.createKeys).toEqual(["join-request-0001"]);
   });
 
   it("rejects a new RSVP once the two-hour cutoff has passed", async () => {

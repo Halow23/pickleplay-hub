@@ -10,6 +10,8 @@ import Admin from "./pages/Admin";
 import Venues from "./pages/Venues";
 import VenueSourcesAdmin from "./pages/VenueSourcesAdmin";
 import NotificationSettings from "./pages/NotificationSettings";
+import GameThread from "./pages/GameThread";
+import ModeratorConsole from "./pages/ModeratorConsole";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -21,6 +23,8 @@ function Router() {
       <Route path={"/venues"} component={Venues} />
       <Route path={"/admin/venues"} component={VenueSourcesAdmin} />
       <Route path={"/settings/notifications"} component={NotificationSettings} />
+      <Route path={"/games/:gameId/thread"} component={GameThread} />
+      <Route path={"/moderator"} component={ModeratorConsole} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

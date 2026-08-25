@@ -5,16 +5,19 @@ import {
   createCommunityReport,
   blockCommunityUser,
   getModerationReports,
+  getModerationAudit,
   getCommunityDashboard,
   joinCommunityGroup,
   markNotificationsRead,
   respondToGame,
   reviewCommunityReport,
+  assignCommunityReport,
+  resolveCommunityReport,
   sendGameUpdate,
   updatePlayerProfile,
 } from "./db";
 import { archiveOrganizerGame, cancelOrganizerGame, createOrganizerGame, getOrganizerRoster, listOrganizerGames, publishOrganizerGame, updateOrganizerGame } from "./organizerService";
-import { acceptGroupInvite, addGameThreadPost, createCommunityGroup, createGroupInvite, listCommunityMembers, listGroupMembershipRequests, listVisibleGroupMembers, recordAttendance, removeSavedGameForPlayer, requestGroupMembership, reviewGroupMembership, saveGameForPlayer, transferGroupOwnership, updateGroupMemberRole } from "./communityService";
+import { acceptGroupInvite, addGameThreadPost, createCommunityGroup, createGroupInvite, listCommunityMembers, listGameThreadPosts, listGroupMembershipRequests, listVisibleGroupMembers, recordAttendance, removeSavedGameForPlayer, requestGroupMembership, reviewGroupMembership, saveGameForPlayer, transferGroupOwnership, updateGroupMemberRole } from "./communityService";
 import { bootstrapProjectOwnerAdmin, listAdminUsers, updateUserRole } from "./adminService";
 import { getNotificationPreferences, updateNotificationPreferences } from "./notificationPreferences";
 import { addVenueSource, addVenueStaff, listVenueReviews, reviewVenueClaim, reviewVenueCorrection, setVenueVerificationState, submitVenueClaim, submitVenueCorrection } from "./venueService";
@@ -39,10 +42,10 @@ export const appRouter = router({
   community: router({
     dashboard: publicProcedure.query(async ({ ctx }) => getCommunityDashboard(ctx.user)),
     rsvp: protectedProcedure
-      .input(z.object({ gameId: z.number().int().positive(), action: z.enum(["join", "leave"]) }))
+      .input(z.object({ gameId: z.number().int().positive(), action: z.enum(["join", "leave"]), idempotencyKey: z.string().trim().min(12).max(100).optional() }))
       .mutation(async ({ ctx, input }) => {
         try {
-          return await respondToGame(ctx.user.id, input.gameId, input.action);
+          return await respondToGame(ctx.user.id, input.gameId, input.action, input.idempotencyKey);
         } catch (error) {
           return communityError(error);
         }
@@ -91,6 +94,9 @@ export const appRouter = router({
         return communityError(error);
       }
     }),
+    moderationAudit: protectedProcedure.query(async ({ ctx }) => {
+      try { return await getModerationAudit(ctx.user.role); } catch (error) { return communityError(error); }
+    }),
     reviewReport: protectedProcedure
       .input(z.object({ reportId: z.number().int().positive(), status: z.enum(["reviewing", "closed"]) }))
       .mutation(async ({ ctx, input }) => {
@@ -100,6 +106,12 @@ export const appRouter = router({
           return communityError(error);
         }
       }),
+    assignReport: protectedProcedure.input(z.object({ reportId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      try { return await assignCommunityReport(ctx.user, input.reportId); } catch (error) { return communityError(error); }
+    }),
+    resolveReport: protectedProcedure.input(z.object({ reportId: z.number().int().positive(), resolutionReason: z.string().trim().min(3).max(300), resolutionNote: z.string().trim().max(600).optional(), sanction: z.enum(["none", "warning", "suspension", "ban"]) })).mutation(async ({ ctx, input }) => {
+      try { return await resolveCommunityReport(ctx.user, input); } catch (error) { return communityError(error); }
+    }),
     organizerUpdate: protectedProcedure
       .input(z.object({ gameId: z.number().int().positive(), message: z.string().trim().min(3).max(500) }))
       .mutation(async ({ ctx, input }) => {
@@ -118,6 +130,7 @@ export const appRouter = router({
     requestGroupMembership: protectedProcedure.input(z.object({ groupId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { try { return await requestGroupMembership(ctx.user.id, input.groupId); } catch (error) { return communityError(error); } }),
     saveGame: protectedProcedure.input(z.object({ gameId: z.number().int().positive(), saved: z.boolean() })).mutation(async ({ ctx, input }) => input.saved ? saveGameForPlayer(ctx.user.id, input.gameId) : removeSavedGameForPlayer(ctx.user.id, input.gameId)),
     postGameThread: protectedProcedure.input(z.object({ gameId: z.number().int().positive(), body: z.string().trim().min(1).max(600) })).mutation(async ({ ctx, input }) => { try { return await addGameThreadPost(ctx.user.id, input.gameId, input.body); } catch (error) { return communityError(error); } }),
+    gameThread: protectedProcedure.input(z.object({ gameId: z.number().int().positive() })).query(async ({ ctx, input }) => { try { return await listGameThreadPosts(ctx.user.id, input.gameId); } catch (error) { return communityError(error); } }),
     acceptGroupInvite: protectedProcedure.input(z.object({ token: z.string().trim().min(8).max(100) })).mutation(async ({ ctx, input }) => { try { return await acceptGroupInvite(ctx.user.id, input.token); } catch (error) { return communityError(error); } }),
     submitVenueClaim: protectedProcedure.input(z.object({ venueId: z.number().int().positive(), note: z.string().trim().max(600).optional() })).mutation(async ({ ctx, input }) => { try { return await submitVenueClaim(ctx.user, input.venueId, input.note); } catch (error) { return communityError(error); } }),
     submitVenueCorrection: protectedProcedure.input(z.object({ venueId: z.number().int().positive(), field: z.string().trim().min(2).max(80), proposedValue: z.string().trim().min(1).max(500), reason: z.string().trim().max(600).optional() })).mutation(async ({ ctx, input }) => { try { return await submitVenueCorrection(ctx.user, input); } catch (error) { return communityError(error); } }),

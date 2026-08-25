@@ -9,6 +9,14 @@ function requireReviewAccess(role: CommunityRole) {
   if (!canReviewCommunityReports(role)) throw new Error("Moderator access is required to review reports.");
 }
 
+export function canApplyReportSanction(role: CommunityRole, sanction: "none" | "warning" | "suspension" | "ban") {
+  return canReviewCommunityReports(role) && (sanction !== "ban" || role === "admin");
+}
+
+export function assertOpenReportTransition(status: "open" | "reviewing" | "closed", action: "assign" | "resolve") {
+  if (status === "closed") throw new Error(action === "assign" ? "Closed reports cannot be assigned." : "This report has already been resolved.");
+}
+
 export async function listReportsForReviewer<T>(repository: ModerationRepository<T>, role: CommunityRole) {
   requireReviewAccess(role);
   return repository.listReports();

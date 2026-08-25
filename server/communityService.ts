@@ -178,3 +178,16 @@ export async function addGameThreadPost(userId: number, gameId: number, body: st
   await db.insert(gameThreads).values({ gameId, authorId: userId, body });
   return { posted: true };
 }
+
+export async function listGameThreadPosts(userId: number, gameId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  const activeRsvp = (await db.select({ id: rsvps.id }).from(rsvps).where(and(eq(rsvps.userId, userId), eq(rsvps.gameId, gameId), inArray(rsvps.state, ["confirmed", "waitlisted"]))).limit(1))[0];
+  const game = (await db.select({ organizerId: games.organizerId }).from(games).where(eq(games.id, gameId)).limit(1))[0];
+  if (!game || (!activeRsvp && game.organizerId !== userId)) throw new Error("Only an active participant or the host can view this game thread.");
+  return db.select({ id: gameThreads.id, authorId: gameThreads.authorId, authorName: playerProfiles.displayName, body: gameThreads.body, createdAt: gameThreads.createdAt })
+    .from(gameThreads)
+    .leftJoin(playerProfiles, eq(gameThreads.authorId, playerProfiles.userId))
+    .where(eq(gameThreads.gameId, gameId))
+    .orderBy(asc(gameThreads.createdAt), asc(gameThreads.id));
+}

@@ -8,7 +8,7 @@ export type StoredRsvp = { id: number; userId: number; state: RsvpState };
 export type RsvpTransaction = {
   findExisting: (userId: number) => Promise<StoredRsvp | undefined>;
   countConfirmed: () => Promise<number>;
-  create: (userId: number, state: RsvpState) => Promise<void>;
+  create: (userId: number, state: RsvpState, idempotencyKey?: string) => Promise<void>;
   remove: (id: number) => Promise<void>;
   findEarliestWaitlisted: () => Promise<StoredRsvp | undefined>;
   promote: (id: number) => Promise<void>;
@@ -17,7 +17,7 @@ export type RsvpTransaction = {
 
 export async function applyRsvpAction(
   transaction: RsvpTransaction,
-  input: { userId: number; gameId: number; gameTitle: string; capacity: number; action: "join" | "leave"; startsAt?: number; rsvpDeadlineAt?: number; now?: number }
+  input: { userId: number; gameId: number; gameTitle: string; capacity: number; action: "join" | "leave"; idempotencyKey?: string; startsAt?: number; rsvpDeadlineAt?: number; now?: number }
 ) {
   const existing = await transaction.findExisting(input.userId);
 
@@ -28,7 +28,7 @@ export async function applyRsvpAction(
     }
     if (existing) return { state: existing.state, changed: false, promotedUserId: null };
     const state = decideRsvpState(input.capacity, await transaction.countConfirmed());
-    await transaction.create(input.userId, state);
+    await transaction.create(input.userId, state, input.idempotencyKey);
     await transaction.notify(confirmedGameDelivery(input.userId, input.gameId, input.gameTitle, state));
     return { state, changed: true, promotedUserId: null };
   }

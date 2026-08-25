@@ -1,0 +1,20 @@
+import { useAuth } from "@/_core/hooks/useAuth";
+import { startLogin } from "@/const";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { trpc } from "@/lib/trpc";
+import { ArrowLeft, MessageCircle, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { Link, useRoute } from "wouter";
+
+export default function GameThread() {
+  const { isAuthenticated } = useAuth();
+  const [, params] = useRoute("/games/:gameId/thread");
+  const gameId = Number(params?.gameId);
+  const [body, setBody] = useState("");
+  const thread = trpc.community.gameThread.useQuery({ gameId }, { enabled: isAuthenticated && Number.isInteger(gameId) && gameId > 0 });
+  const post = trpc.community.postGameThread.useMutation({ onSuccess: () => { setBody(""); toast.success("Posted to the participant thread."); thread.refetch(); }, onError: error => toast.error(error.message) });
+  if (!isAuthenticated) return <main className="min-h-screen bg-[#f5f3eb] p-8"><div className="mx-auto max-w-lg rounded-[28px] bg-white p-8 text-center shadow-sm"><ShieldCheck className="mx-auto h-8 w-8 text-[#2d6a58]" /><h1 className="mt-4 font-[Fraunces] text-3xl font-semibold">Participant thread</h1><p className="mt-3 text-sm leading-6 text-[#64736c]">Sign in to view coordination messages for games you are attending or hosting.</p><Button onClick={startLogin} className="mt-6 rounded-full bg-[#19473e]">Sign in</Button></div></main>;
+  return <main className="min-h-screen bg-[#f5f3eb] p-6 text-[#173d35] sm:p-10"><div className="mx-auto max-w-3xl"><Link href="/?view=play" className="inline-flex items-center gap-2 text-sm font-bold text-[#39705d]"><ArrowLeft className="h-4 w-4" /> Back to games</Link><header className="mt-7 rounded-[30px] border border-[#dfe1d5] bg-[#fffef9] p-7"><div className="flex items-start gap-4"><div className="rounded-2xl bg-[#e5efe3] p-3 text-[#2f6f5c]"><MessageCircle className="h-7 w-7" /></div><div><p className="text-[11px] font-extrabold uppercase tracking-[.14em] text-[#668176]">Game coordination</p><h1 className="mt-1 font-[Fraunces] text-4xl font-semibold tracking-[-.05em]">Participant thread</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-[#66756c]">This shared thread is visible only to confirmed or waitlisted participants and the game host. It is not an unrestricted direct-message service.</p></div></div></header>{thread.isLoading ? <p className="mt-6 rounded-3xl bg-white p-6 text-sm text-[#66756c]">Loading participant thread…</p> : thread.error ? <section className="mt-6 rounded-3xl border border-[#eadfba] bg-[#fff8e5] p-6"><h2 className="font-[Fraunces] text-2xl font-semibold">This thread is not available</h2><p className="mt-2 text-sm leading-6 text-[#695c40]">{thread.error.message}</p></section> : <><section className="mt-6 space-y-3">{thread.data?.length ? thread.data.map(postItem => <article key={postItem.id} className="rounded-2xl border border-[#dfe1d5] bg-white p-4"><p className="text-sm font-bold">{postItem.authorName || "Participant"}</p><p className="mt-2 text-sm leading-6 text-[#52645a]">{postItem.body}</p><p className="mt-2 text-xs text-[#748077]">{new Date(postItem.createdAt).toLocaleString()}</p></article>) : <p className="rounded-2xl bg-white p-6 text-sm text-[#66756c]">No messages yet. Use this thread only for game-specific coordination.</p>}</section><section className="mt-5 rounded-3xl bg-white p-5"><label htmlFor="thread-post" className="font-[Fraunces] text-xl font-semibold">Add a coordination note</label><Textarea id="thread-post" value={body} onChange={event => setBody(event.target.value)} maxLength={600} className="mt-3 min-h-28" placeholder="For example, I’ll arrive 10 minutes early with extra balls." /><div className="mt-3 flex justify-end"><Button disabled={!body.trim() || post.isPending} onClick={() => post.mutate({ gameId, body: body.trim() })} className="rounded-full bg-[#19473e]">Post to thread</Button></div></section></>}</div></main>;
+}

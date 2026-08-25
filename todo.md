@@ -76,3 +76,5 @@
 - [ ] Add privacy-safe city, neighborhood, indoor, and lighting filters to the member venue workspace.
 - [ ] Return venue-source provenance with public venue listings and display source labels, links, and verification dates to members.
 - [ ] Require recorded source provenance before an administrator can mark a venue as verified, and expose source creation in the administrator console.
+- [ ] Reject nonexistent or closed report transitions before writing moderation audit events, with service-level coverage.
+- [ ] Add workflow-level moderator tests for assignment, resolution detail persistence, sanction restrictions, and audit-event creation.

@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   attendanceRecords,
+  auditEvents,
   communityGroups,
   games,
   gamePosts,
@@ -18,7 +19,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { confirmedGameDelivery, organizerUpdateDelivery, persistInAppDeliveries, waitlistPromotionDelivery } from "./notificationService";
-import { listReportsForReviewer, setReportReviewStatus } from "./moderationService";
+import { assertOpenReportTransition, listReportsForReviewer, setReportReviewStatus } from "./moderationService";
 import { applyRsvpAction } from "./rsvpService";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -282,7 +283,7 @@ export async function getCommunityDashboard(currentUser?: { id: number; name?: s
   };
 }
 
-export async function respondToGame(userId: number, gameId: number, action: "join" | "leave") {
+export async function respondToGame(userId: number, gameId: number, action: "join" | "leave", idempotencyKey?: string) {
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
 
@@ -292,19 +293,19 @@ export async function respondToGame(userId: number, gameId: number, action: "joi
     if (!game) throw new Error("This game is no longer available.");
 
     if (game.visibility === "private" && game.groupId) {
-      const membership = await tx.select({ id: groupMemberships.id }).from(groupMemberships).where(and(eq(groupMemberships.groupId, game.groupId), eq(groupMemberships.userId, userId))).limit(1);
+      const membership = await tx.select({ id: groupMemberships.id }).from(groupMemberships).where(and(eq(groupMemberships.groupId, game.groupId), eq(groupMemberships.userId, userId), eq(groupMemberships.state, "active"))).limit(1);
       if (!membership[0] && game.organizerId !== userId) throw new Error("This member session is available after group approval.");
     }
 
     return applyRsvpAction({
       findExisting: async requestedUserId => (await tx.select().from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.userId, requestedUserId))).limit(1))[0],
       countConfirmed: async () => Number((await tx.select({ total: count(rsvps.id) }).from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.state, "confirmed"))))[0]?.total ?? 0),
-      create: async (requestedUserId, state) => { await tx.insert(rsvps).values({ gameId, userId: requestedUserId, state }); },
+      create: async (requestedUserId, state, requestKey) => { await tx.insert(rsvps).values({ gameId, userId: requestedUserId, state, guestCount: 0, idempotencyKey: requestKey || null }); },
       remove: async rsvpId => { await tx.delete(rsvps).where(eq(rsvps.id, rsvpId)); },
       findEarliestWaitlisted: async () => (await tx.select().from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.state, "waitlisted"))).orderBy(asc(rsvps.createdAt), asc(rsvps.id)).limit(1).for("update"))[0],
       promote: async rsvpId => { await tx.update(rsvps).set({ state: "confirmed", updatedAt: new Date() }).where(eq(rsvps.id, rsvpId)); },
       notify: async delivery => { await persistInAppDeliveries(tx, delivery); },
-    }, { userId, gameId, gameTitle: game.title, capacity: game.capacity, action, startsAt: game.startsAt.getTime(), rsvpDeadlineAt: game.rsvpDeadlineAt?.getTime() });
+    }, { userId, gameId, gameTitle: game.title, capacity: game.capacity, action, idempotencyKey, startsAt: game.startsAt.getTime(), rsvpDeadlineAt: game.rsvpDeadlineAt?.getTime() });
   });
 }
 
@@ -351,6 +352,42 @@ export async function reviewCommunityReport(role: "user" | "player" | "organizer
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
   return setReportReviewStatus({ listReports: async () => [], setReportStatus: async (targetId, targetStatus) => { await db.update(reports).set({ status: targetStatus }).where(eq(reports.id, targetId)); } }, role, reportId, status);
+}
+
+export async function assignCommunityReport(actor: { id: number; role: "user" | "player" | "organizer" | "moderator" | "admin" }, reportId: number) {
+  if (actor.role !== "moderator" && actor.role !== "admin") throw new Error("Moderator access is required to assign reports.");
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  await db.transaction(async tx => {
+    const report = (await tx.select({ id: reports.id, status: reports.status }).from(reports).where(eq(reports.id, reportId)).limit(1).for("update"))[0];
+    if (!report) throw new Error("This report is no longer available.");
+    assertOpenReportTransition(report.status, "assign");
+    await tx.update(reports).set({ assignedTo: actor.id, status: "reviewing" }).where(eq(reports.id, reportId));
+    await tx.insert(auditEvents).values({ actorId: actor.id, eventType: "report_assigned", subjectType: "report", subjectId: reportId, metadata: JSON.stringify({ assignedTo: actor.id }) });
+  });
+  return { updated: true };
+}
+
+export async function resolveCommunityReport(actor: { id: number; role: "user" | "player" | "organizer" | "moderator" | "admin" }, input: { reportId: number; resolutionReason: string; resolutionNote?: string; sanction: "none" | "warning" | "suspension" | "ban" }) {
+  if (actor.role !== "moderator" && actor.role !== "admin") throw new Error("Moderator access is required to resolve reports.");
+  if (input.sanction === "ban" && actor.role !== "admin") throw new Error("Only platform administrators can apply a ban.");
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  await db.transaction(async tx => {
+    const report = (await tx.select({ id: reports.id, status: reports.status }).from(reports).where(eq(reports.id, input.reportId)).limit(1).for("update"))[0];
+    if (!report) throw new Error("This report is no longer available.");
+    assertOpenReportTransition(report.status, "resolve");
+    await tx.update(reports).set({ status: "closed", assignedTo: actor.id, resolutionReason: input.resolutionReason, resolutionNote: input.resolutionNote || null, sanction: input.sanction, resolvedAt: new Date() }).where(eq(reports.id, input.reportId));
+    await tx.insert(auditEvents).values({ actorId: actor.id, eventType: "report_resolved", subjectType: "report", subjectId: input.reportId, metadata: JSON.stringify({ resolutionReason: input.resolutionReason, sanction: input.sanction }) });
+  });
+  return { updated: true };
+}
+
+export async function getModerationAudit(role: "user" | "player" | "organizer" | "moderator" | "admin") {
+  if (role !== "moderator" && role !== "admin") throw new Error("Moderator access is required to view report history.");
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  return db.select().from(auditEvents).where(eq(auditEvents.subjectType, "report")).orderBy(desc(auditEvents.createdAt)).limit(100);
 }
 
 export async function sendGameUpdate(user: { id: number; role: "user" | "player" | "organizer" | "moderator" | "admin" }, gameId: number, message: string) {

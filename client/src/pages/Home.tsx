@@ -247,7 +247,7 @@ export default function Home() {
 
   const handleGameAction = (gameId: number, currentState: "confirmed" | "waitlisted" | null) => {
     if (!isAuthenticated) return askForSignIn();
-    rsvpMutation.mutate({ gameId, action: currentState ? "leave" : "join" });
+    rsvpMutation.mutate({ gameId, action: currentState ? "leave" : "join", idempotencyKey: crypto.randomUUID() });
   };
 
   const exportGameCalendar = (game: { id: number; title: string; description: string; startsAt: number; endsAt: number; venueName: string }) => {
