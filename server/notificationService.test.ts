@@ -12,13 +12,15 @@ describe("in-app notification delivery", () => {
     expect(organizerUpdateDelivery(7, 8, "Courts moved indoors")).toMatchObject({ type: "organizer_update", body: "Courts moved indoors" });
   });
 
-  it("persists in-app deliveries through the channel repository boundary", () => {
-    const values = vi.fn().mockReturnValue("written");
+  it("persists an in-app notification with queued outbox and delivered channel records", async () => {
+    const values = vi.fn().mockResolvedValueOnce([{ insertId: 42 }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     const repository = { insert: vi.fn().mockReturnValue({ values }) };
     const delivery = organizerUpdateDelivery(7, 8, "Courts moved indoors");
 
-    expect(persistInAppDeliveries(repository, delivery)).toBe("written");
-    expect(repository.insert).toHaveBeenCalledOnce();
-    expect(values).toHaveBeenCalledWith(delivery);
+    await expect(persistInAppDeliveries(repository, delivery)).resolves.toEqual([42]);
+    expect(repository.insert).toHaveBeenCalledTimes(3);
+    expect(values).toHaveBeenNthCalledWith(1, delivery);
+    expect(values).toHaveBeenNthCalledWith(2, { notificationId: 42, state: "queued" });
+    expect(values).toHaveBeenNthCalledWith(3, expect.objectContaining({ notificationId: 42, channel: "in_app", state: "delivered" }));
   });
 });

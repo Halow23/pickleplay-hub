@@ -7,6 +7,9 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import Organizer from "./pages/Organizer";
 import Admin from "./pages/Admin";
+import Venues from "./pages/Venues";
+import VenueSourcesAdmin from "./pages/VenueSourcesAdmin";
+import NotificationSettings from "./pages/NotificationSettings";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -15,6 +18,9 @@ function Router() {
       <Route path={"/"} component={Home} />
       <Route path={"/organizer"} component={Organizer} />
       <Route path={"/admin"} component={Admin} />
+      <Route path={"/venues"} component={Venues} />
+      <Route path={"/admin/venues"} component={VenueSourcesAdmin} />
+      <Route path={"/settings/notifications"} component={NotificationSettings} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

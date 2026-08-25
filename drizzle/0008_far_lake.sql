@@ -1,0 +1,1 @@
+ALTER TABLE `venues` ADD `verificationState` enum('unverified','claimed','verified') DEFAULT 'unverified' NOT NULL;

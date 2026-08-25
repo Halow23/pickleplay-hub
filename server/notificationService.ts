@@ -1,4 +1,4 @@
-import { notifications } from "../drizzle/schema";
+import { notificationDeliveryRecords, notificationOutbox, notifications } from "../drizzle/schema";
 
 /**
  * In-app is the only enabled channel for this MVP. A future email adapter can
@@ -33,6 +33,22 @@ export function organizerUpdateDelivery(userId: number, gameId: number, message:
 
 type NotificationRepository = { insert: Function };
 
-export function persistInAppDeliveries(repository: NotificationRepository, deliveries: InAppDelivery | InAppDelivery[]) {
-  return repository.insert(notifications).values(deliveries);
+function insertIdFrom(result: unknown) {
+  if (Array.isArray(result) && result[0] && typeof result[0] === "object" && "insertId" in result[0]) return Number((result[0] as { insertId: number }).insertId);
+  if (result && typeof result === "object" && "insertId" in result) return Number((result as { insertId: number }).insertId);
+  return 0;
+}
+
+export async function persistInAppDeliveries(repository: NotificationRepository, deliveries: InAppDelivery | InAppDelivery[]) {
+  const records = Array.isArray(deliveries) ? deliveries : [deliveries];
+  const notificationIds: number[] = [];
+  for (const delivery of records) {
+    const result = await repository.insert(notifications).values(delivery);
+    const notificationId = insertIdFrom(result);
+    if (!notificationId) throw new Error("Could not persist the in-app notification.");
+    notificationIds.push(notificationId);
+    await repository.insert(notificationOutbox).values({ notificationId, state: "queued" });
+    await repository.insert(notificationDeliveryRecords).values({ notificationId, channel: "in_app", state: "delivered", detail: "Rendered in the PicklePlay notification center.", deliveredAt: new Date() });
+  }
+  return notificationIds;
 }

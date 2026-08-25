@@ -70,6 +70,7 @@ export const venues = mysqlTable(
     indoor: boolean("indoor").notNull().default(false),
     lighting: boolean("lighting").notNull().default(false),
     visibility: mysqlEnum("visibility", gameVisibility).default("public").notNull(),
+    verificationState: mysqlEnum("verificationState", venueVerificationStates).notNull().default("unverified"),
     accessibilityNote: varchar("accessibilityNote", { length: 220 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },

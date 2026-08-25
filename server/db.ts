@@ -14,6 +14,7 @@ import {
   userBlocks,
   users,
   venues,
+  venueSources,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { confirmedGameDelivery, organizerUpdateDelivery, persistInAppDeliveries, waitlistPromotionDelivery } from "./notificationService";
@@ -220,6 +221,13 @@ export async function getCommunityDashboard(currentUser?: { id: number; name?: s
     .orderBy(asc(communityGroups.name));
 
   const venueRows = await db.select().from(venues).where(eq(venues.visibility, "public")).orderBy(asc(venues.name));
+  const venueSourceRows = await db.select({ venueId: venueSources.venueId, sourceLabel: venueSources.sourceLabel, sourceUrl: venueSources.sourceUrl, verifiedAt: venueSources.verifiedAt }).from(venueSources).orderBy(desc(venueSources.verifiedAt));
+  const venueSourcesByVenue = new Map<number, Array<{ sourceLabel: string; sourceUrl: string | null; verifiedAt: number }>>();
+  for (const source of venueSourceRows) {
+    const current = venueSourcesByVenue.get(source.venueId) || [];
+    current.push({ sourceLabel: source.sourceLabel, sourceUrl: source.sourceUrl, verifiedAt: source.verifiedAt?.getTime() ?? 0 });
+    venueSourcesByVenue.set(source.venueId, current);
+  }
 
   let currentProfile = undefined;
   let rsvpByGame = new Map<number, "confirmed" | "waitlisted">();
@@ -267,7 +275,7 @@ export async function getCommunityDashboard(currentUser?: { id: number; name?: s
       userRsvpState: rsvpByGame.get(game.id) ?? null,
       canAccess: game.visibility === "public" || currentUser?.id === game.organizerId || (game.groupId ? memberships.has(game.groupId) : false),
     })),
-    venues: venueRows,
+    venues: venueRows.map(venue => ({ ...venue, sources: venueSourcesByVenue.get(venue.id) || [] })),
     groups: groupRows.map(group => ({ ...group, isMember: memberships.has(group.id) })),
     notifications: userNotifications,
     attendanceHistory,

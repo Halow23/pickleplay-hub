@@ -17,7 +17,7 @@ import { archiveOrganizerGame, cancelOrganizerGame, createOrganizerGame, getOrga
 import { acceptGroupInvite, addGameThreadPost, createCommunityGroup, createGroupInvite, listCommunityMembers, listGroupMembershipRequests, listVisibleGroupMembers, recordAttendance, removeSavedGameForPlayer, requestGroupMembership, reviewGroupMembership, saveGameForPlayer, transferGroupOwnership, updateGroupMemberRole } from "./communityService";
 import { bootstrapProjectOwnerAdmin, listAdminUsers, updateUserRole } from "./adminService";
 import { getNotificationPreferences, updateNotificationPreferences } from "./notificationPreferences";
-import { addVenueSource, addVenueStaff, listVenueReviews, reviewVenueClaim, reviewVenueCorrection, submitVenueClaim, submitVenueCorrection } from "./venueService";
+import { addVenueSource, addVenueStaff, listVenueReviews, reviewVenueClaim, reviewVenueCorrection, setVenueVerificationState, submitVenueClaim, submitVenueCorrection } from "./venueService";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -152,6 +152,7 @@ export const appRouter = router({
     venueReviews: protectedProcedure.query(async ({ ctx }) => { try { return await listVenueReviews(ctx.user); } catch (error) { return communityError(error); } }),
     reviewVenueClaim: protectedProcedure.input(z.object({ claimId: z.number().int().positive(), state: z.enum(["reviewing", "accepted", "rejected"]) })).mutation(async ({ ctx, input }) => { try { return await reviewVenueClaim(ctx.user, input.claimId, input.state); } catch (error) { return communityError(error); } }),
     reviewVenueCorrection: protectedProcedure.input(z.object({ correctionId: z.number().int().positive(), state: z.enum(["reviewing", "accepted", "rejected"]) })).mutation(async ({ ctx, input }) => { try { return await reviewVenueCorrection(ctx.user, input.correctionId, input.state); } catch (error) { return communityError(error); } }),
+    setVenueVerification: protectedProcedure.input(z.object({ venueId: z.number().int().positive(), verificationState: z.enum(["unverified", "claimed", "verified"]) })).mutation(async ({ ctx, input }) => { try { return await setVenueVerificationState(ctx.user, input.venueId, input.verificationState); } catch (error) { return communityError(error); } }),
     addVenueStaff: protectedProcedure.input(z.object({ venueId: z.number().int().positive(), userId: z.number().int().positive(), role: z.enum(["manager", "editor"]) })).mutation(async ({ ctx, input }) => { try { return await addVenueStaff(ctx.user, input.venueId, input.userId, input.role); } catch (error) { return communityError(error); } }),
     addVenueSource: protectedProcedure.input(z.object({ venueId: z.number().int().positive(), sourceLabel: z.string().trim().min(2).max(160), sourceUrl: z.string().trim().url().max(500).optional() })).mutation(async ({ ctx, input }) => { try { return await addVenueSource(ctx.user, input.venueId, input.sourceLabel, input.sourceUrl); } catch (error) { return communityError(error); } }),
   }),

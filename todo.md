@@ -68,6 +68,11 @@
 - [ ] Add user-facing RSVP deadline, guest-count, cancellation-reason, and capacity-change safeguards.
 - [ ] Add workflow-level integration coverage for venue operations, moderator resolution, and notification preference updates.
 - [ ] Enforce the approved no-guest RSVP policy, two-hour cutoff, idempotency protection, and organizer-only capacity and cancellation controls.
+- [ ] Add administrator-led venue verification decisions and display verified provenance to signed-in players.
+- [ ] Add player-facing venue claim and correction submission controls with privacy-aware venue filtering.
 - [ ] Add moderator queue assignment, resolution reasons, sanctions, and audit-history views.
 - [ ] Add end-to-end role, RSVP, notification, venue, and moderation workflow coverage for the broader release.
 - [ ] Run final desktop and mobile verification across community, organizer, admin, and moderator routes.
+- [ ] Add privacy-safe city, neighborhood, indoor, and lighting filters to the member venue workspace.
+- [ ] Return venue-source provenance with public venue listings and display source labels, links, and verification dates to members.
+- [ ] Require recorded source provenance before an administrator can mark a venue as verified, and expose source creation in the administrator console.
