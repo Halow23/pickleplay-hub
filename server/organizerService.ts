@@ -1,5 +1,5 @@
 import { and, asc, count, eq, inArray } from "drizzle-orm";
-import { auditEvents, communityGroups, games, notifications, playerProfiles, rsvps, users, venues } from "../drizzle/schema";
+import { attendanceRecords, auditEvents, communityGroups, games, notifications, playerProfiles, rsvps, users, venues } from "../drizzle/schema";
 import { getDb } from "./db";
 import { organizerUpdateDelivery, persistInAppDeliveries } from "./notificationService";
 import { assertOrganizerGameAccess, assertSafeCapacityChange, canCreateOrganizerGame } from "./organizerPolicy";
@@ -133,8 +133,8 @@ export async function getOrganizerRoster(actor: OrganizerActor, gameId: number) 
   await getManagedGame(actor, gameId);
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
-  return db.select({ rsvpId: rsvps.id, state: rsvps.state, createdAt: rsvps.createdAt, userId: users.id, name: users.name, displayName: playerProfiles.displayName, skillBand: playerProfiles.skillBand })
-    .from(rsvps).innerJoin(users, eq(rsvps.userId, users.id)).leftJoin(playerProfiles, eq(playerProfiles.userId, users.id)).where(eq(rsvps.gameId, gameId)).orderBy(asc(rsvps.state), asc(rsvps.createdAt));
+  return db.select({ rsvpId: rsvps.id, state: rsvps.state, createdAt: rsvps.createdAt, userId: users.id, name: users.name, displayName: playerProfiles.displayName, skillBand: playerProfiles.skillBand, attendanceStatus: attendanceRecords.status, checkInAt: attendanceRecords.checkInAt, correctionNote: attendanceRecords.correctionNote })
+    .from(rsvps).innerJoin(users, eq(rsvps.userId, users.id)).leftJoin(playerProfiles, eq(playerProfiles.userId, users.id)).leftJoin(attendanceRecords, eq(attendanceRecords.rsvpId, rsvps.id)).where(eq(rsvps.gameId, gameId)).orderBy(asc(rsvps.state), asc(rsvps.createdAt));
 }
 
 export async function listOrganizerGames(actor: OrganizerActor) {

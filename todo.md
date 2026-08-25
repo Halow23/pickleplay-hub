@@ -52,3 +52,11 @@
 - [x] Verify the visible Groups workflow on desktop and mobile after the private-group management controls were added.
 - [ ] Add real private-group service failure tests for invalid invites and forbidden invitation, role, and ownership actions.
 - [ ] Verify the expanded signed-in owner workspace with invite, role, and ownership controls at desktop and mobile sizes.
+- [ ] Add player-visible attendance history and correction provenance to profile and organizer workflows.
+- [ ] Enforce RSVP deadlines, guest-count capacity calculations, idempotency keys, capacity-change safeguards, and cancellation reasons.
+- [ ] Expose saved games, calendar export, and participant-scoped game-thread controls in player interfaces.
+- [ ] Add persistent notification preferences, outbox entries, delivery records, and a safe in-app dispatcher.
+- [ ] Add venue corrections, claims, source provenance, verification states, and venue-staff management.
+- [ ] Add moderator queue assignment, resolution reasons, sanctions, and audit-history views.
+- [ ] Add end-to-end role, RSVP, notification, venue, and moderation workflow coverage for the broader release.
+- [ ] Run final desktop and mobile verification across community, organizer, admin, and moderator routes.

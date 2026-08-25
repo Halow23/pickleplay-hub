@@ -16,6 +16,7 @@ import {
 import { archiveOrganizerGame, cancelOrganizerGame, createOrganizerGame, getOrganizerRoster, listOrganizerGames, publishOrganizerGame, updateOrganizerGame } from "./organizerService";
 import { acceptGroupInvite, addGameThreadPost, createCommunityGroup, createGroupInvite, listCommunityMembers, listGroupMembershipRequests, listVisibleGroupMembers, recordAttendance, removeSavedGameForPlayer, requestGroupMembership, reviewGroupMembership, saveGameForPlayer, transferGroupOwnership, updateGroupMemberRole } from "./communityService";
 import { bootstrapProjectOwnerAdmin, listAdminUsers, updateUserRole } from "./adminService";
+import { getNotificationPreferences, updateNotificationPreferences } from "./notificationPreferences";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -108,6 +109,8 @@ export const appRouter = router({
         }
       }),
     markNotificationsRead: protectedProcedure.mutation(async ({ ctx }) => markNotificationsRead(ctx.user.id)),
+    notificationPreferences: protectedProcedure.query(async ({ ctx }) => getNotificationPreferences(ctx.user.id)),
+    updateNotificationPreferences: protectedProcedure.input(z.object({ inAppEnabled: z.boolean(), emailEnabled: z.boolean(), gameUpdatesEnabled: z.boolean(), waitlistUpdatesEnabled: z.boolean() })).mutation(async ({ ctx, input }) => updateNotificationPreferences(ctx.user.id, input)),
     members: protectedProcedure.query(async ({ ctx }) => listCommunityMembers(ctx.user.id)),
     groupMembers: protectedProcedure.input(z.object({ groupId: z.number().int().positive() })).query(async ({ ctx, input }) => { try { return await listVisibleGroupMembers(ctx.user.id, input.groupId); } catch (error) { return communityError(error); } }),
     createGroup: protectedProcedure.input(z.object({ name: z.string().trim().min(3).max(160), description: z.string().trim().min(10).max(1600), neighborhood: z.string().trim().min(2).max(120), visibility: z.enum(["public", "private"]) })).mutation(async ({ ctx, input }) => { try { return await createCommunityGroup(ctx.user, input); } catch (error) { return communityError(error); } }),

@@ -18,6 +18,8 @@ export const groupMembershipRoles = ["member", "moderator", "owner"] as const;
 export const groupMembershipStates = ["pending", "active", "denied", "removed"] as const;
 export const attendanceStates = ["attended", "no_show", "late_cancel"] as const;
 export const notificationTypes = ["game_confirmed", "waitlist_promoted", "organizer_update"] as const;
+export const notificationChannels = ["in_app", "email"] as const;
+export const notificationDeliveryStates = ["queued", "delivered", "failed", "suppressed"] as const;
 
 /** Core identity record managed by Manus OAuth. */
 export const users = mysqlTable("users", {
@@ -228,6 +230,39 @@ export const notifications = mysqlTable(
   },
   table => [index("notifications_user_created_idx").on(table.userId, table.createdAt)]
 );
+
+export const notificationPreferences = mysqlTable("notification_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  inAppEnabled: boolean("inAppEnabled").notNull().default(true),
+  emailEnabled: boolean("emailEnabled").notNull().default(false),
+  gameUpdatesEnabled: boolean("gameUpdatesEnabled").notNull().default(true),
+  waitlistUpdatesEnabled: boolean("waitlistUpdatesEnabled").notNull().default(true),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("notification_preferences_user_unique").on(table.userId)]);
+
+export const notificationOutbox = mysqlTable("notification_outbox", {
+  id: int("id").autoincrement().primaryKey(),
+  notificationId: int("notificationId").notNull().references(() => notifications.id, { onDelete: "cascade" }),
+  state: mysqlEnum("state", notificationDeliveryStates).notNull().default("queued"),
+  attempts: int("attempts").notNull().default(0),
+  nextAttemptAt: timestamp("nextAttemptAt").defaultNow().notNull(),
+  lockedAt: timestamp("lockedAt"),
+  lastError: varchar("lastError", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("notification_outbox_notification_unique").on(table.notificationId), index("notification_outbox_state_idx").on(table.state, table.nextAttemptAt)]);
+
+export const notificationDeliveryRecords = mysqlTable("notification_delivery_records", {
+  id: int("id").autoincrement().primaryKey(),
+  notificationId: int("notificationId").notNull().references(() => notifications.id, { onDelete: "cascade" }),
+  channel: mysqlEnum("channel", notificationChannels).notNull(),
+  state: mysqlEnum("state", notificationDeliveryStates).notNull(),
+  providerReference: varchar("providerReference", { length: 160 }),
+  detail: varchar("detail", { length: 500 }),
+  deliveredAt: timestamp("deliveredAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("notification_delivery_notification_idx").on(table.notificationId), index("notification_delivery_state_idx").on(table.state)]);
 
 export const userBlocks = mysqlTable(
   "user_blocks",

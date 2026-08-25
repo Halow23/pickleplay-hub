@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
+  attendanceRecords,
   communityGroups,
   games,
   gamePosts,
@@ -225,6 +226,7 @@ export async function getCommunityDashboard(currentUser?: { id: number; name?: s
   let memberships = new Set<number>();
   let blockedHostIds = new Set<number>();
   let userNotifications: Array<{ id: number; title: string; body: string; type: "game_confirmed" | "waitlist_promoted" | "organizer_update"; readAt: number | null; createdAt: number }> = [];
+  let attendanceHistory: Array<{ gameId: number; title: string; status: "attended" | "no_show" | "late_cancel"; recordedAt: number; correctionNote: string | null }> = [];
 
   if (currentUser) {
     currentProfile = await getOrCreatePlayerProfile(currentUser.id, currentUser.name);
@@ -243,6 +245,14 @@ export async function getCommunityDashboard(currentUser?: { id: number; name?: s
       readAt: notification.readAt ? notification.readAt.getTime() : null,
       createdAt: notification.createdAt.getTime(),
     }));
+    const attendanceRows = await db.select({ gameId: games.id, title: games.title, status: attendanceRecords.status, recordedAt: attendanceRecords.updatedAt, correctionNote: attendanceRecords.correctionNote })
+      .from(attendanceRecords)
+      .innerJoin(rsvps, eq(attendanceRecords.rsvpId, rsvps.id))
+      .innerJoin(games, eq(rsvps.gameId, games.id))
+      .where(eq(rsvps.userId, currentUser.id))
+      .orderBy(desc(attendanceRecords.updatedAt))
+      .limit(12);
+    attendanceHistory = attendanceRows.map(row => ({ ...row, recordedAt: row.recordedAt.getTime() }));
   }
 
   return {
@@ -260,6 +270,7 @@ export async function getCommunityDashboard(currentUser?: { id: number; name?: s
     venues: venueRows,
     groups: groupRows.map(group => ({ ...group, isMember: memberships.has(group.id) })),
     notifications: userNotifications,
+    attendanceHistory,
   };
 }
 
