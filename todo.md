@@ -50,7 +50,7 @@
 - [x] Run responsive verification for the completed private-group management interface.
 - [x] Add private-group invitation, role-update, and ownership-transfer failure-path coverage.
 - [x] Verify the visible Groups workflow on desktop and mobile after the private-group management controls were added.
-- [ ] Add real private-group service failure tests for invalid invites and forbidden invitation, role, and ownership actions.
+- [x] Add real private-group service failure tests for invalid invites and forbidden invitation, role, and ownership actions.
 - [ ] Verify the expanded signed-in owner workspace with invite, role, and ownership controls at desktop and mobile sizes.
 - [x] Add player-visible attendance history and correction provenance to profile and organizer workflows.
 - [ ] Enforce RSVP deadlines, guest-count capacity calculations, idempotency keys, capacity-change safeguards, and cancellation reasons.

@@ -2,14 +2,14 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { attendanceRecords, auditEvents, communityGroups, gameThreads, games, groupInvites, groupMemberships, playerProfiles, rsvps, savedGames, users } from "../drizzle/schema";
 import { getDb } from "./db";
 import { OrganizerActor } from "./organizerService";
-import { canViewPrivateGroupMembers, membershipStateForVisibility } from "./communityAccess";
+import { assertActiveGroupMember, assertGroupOwnerAccess, assertValidGroupInvite, canViewPrivateGroupMembers, membershipStateForVisibility } from "./communityAccess";
 
 async function getGroupOwnerAccess(actor: OrganizerActor, groupId: number) {
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
   const group = (await db.select().from(communityGroups).where(eq(communityGroups.id, groupId)).limit(1))[0];
   if (!group) throw new Error("This group is no longer available.");
-  if (actor.role !== "admin" && group.ownerId !== actor.id) throw new Error("Only the group owner or platform admin can manage membership.");
+  assertGroupOwnerAccess({ actorId: actor.id, actorRole: actor.role, ownerId: group.ownerId });
   return group;
 }
 
@@ -97,7 +97,7 @@ export async function transferGroupOwnership(actor: OrganizerActor, groupId: num
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
   const successor = (await db.select().from(groupMemberships).where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, successorUserId), eq(groupMemberships.state, "active"))).limit(1))[0];
-  if (!successor) throw new Error("Ownership can only be transferred to an approved active member.");
+  assertActiveGroupMember(successor, "Ownership can only be transferred to an approved active member.");
   await db.transaction(async tx => {
     await tx.update(communityGroups).set({ ownerId: successorUserId, updatedAt: new Date() }).where(eq(communityGroups.id, groupId));
     await tx.update(groupMemberships).set({ role: "member" }).where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, actor.id)));
@@ -113,7 +113,7 @@ export async function updateGroupMemberRole(actor: OrganizerActor, groupId: numb
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
   const membership = (await db.select().from(groupMemberships).where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, memberUserId), eq(groupMemberships.state, "active"))).limit(1))[0];
-  if (!membership) throw new Error("Only approved active members can receive a group role.");
+  assertActiveGroupMember(membership, "Only approved active members can receive a group role.");
   await db.update(groupMemberships).set({ role, reviewedBy: actor.id, reviewedAt: new Date() }).where(eq(groupMemberships.id, membership.id));
   await audit(actor.id, "group_member_role_updated", "group_membership", membership.id, { role });
   return { updated: true };
@@ -134,7 +134,7 @@ export async function acceptGroupInvite(userId: number, token: string) {
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
   const invite = (await db.select().from(groupInvites).where(eq(groupInvites.token, token)).limit(1))[0];
-  if (!invite || invite.acceptedAt || invite.expiresAt < new Date()) throw new Error("This group invitation is invalid or has expired.");
+  assertValidGroupInvite(invite);
   await db.transaction(async tx => {
     await tx.insert(groupMemberships).values({ groupId: invite.groupId, userId, role: "member", state: "active", reviewedBy: invite.invitedBy, reviewedAt: new Date() }).onDuplicateKeyUpdate({ set: { state: "active", reviewedBy: invite.invitedBy, reviewedAt: new Date() } });
     await tx.update(groupInvites).set({ acceptedAt: new Date() }).where(eq(groupInvites.id, invite.id));
