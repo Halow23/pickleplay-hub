@@ -17,11 +17,15 @@ export type RsvpTransaction = {
 
 export async function applyRsvpAction(
   transaction: RsvpTransaction,
-  input: { userId: number; gameId: number; gameTitle: string; capacity: number; action: "join" | "leave" }
+  input: { userId: number; gameId: number; gameTitle: string; capacity: number; action: "join" | "leave"; startsAt?: number; rsvpDeadlineAt?: number; now?: number }
 ) {
   const existing = await transaction.findExisting(input.userId);
 
   if (input.action === "join") {
+    const cutoff = input.rsvpDeadlineAt ?? (input.startsAt ? input.startsAt - 2 * 60 * 60 * 1000 : undefined);
+    if (cutoff !== undefined && (input.now ?? Date.now()) >= cutoff) {
+      throw new Error("RSVPs close two hours before the game begins.");
+    }
     if (existing) return { state: existing.state, changed: false, promotedUserId: null };
     const state = decideRsvpState(input.capacity, await transaction.countConfirmed());
     await transaction.create(input.userId, state);

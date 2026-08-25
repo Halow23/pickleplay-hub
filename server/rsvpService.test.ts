@@ -36,6 +36,13 @@ describe("persisted RSVP transaction behavior", () => {
     expect(state.notifications).toMatchObject([{ userId: 11, type: "game_confirmed", title: "You’re on the waitlist" }]);
   });
 
+  it("rejects a new RSVP once the two-hour cutoff has passed", async () => {
+    const state = createTransaction([], 2);
+    await expect(applyRsvpAction(state.transaction, { userId: 11, gameId: 20, gameTitle: "Open play", capacity: state.capacity, action: "join", startsAt: 10_000_000, now: 2_800_000 })).rejects.toThrow("RSVPs close two hours before the game begins.");
+    expect(state.rsvps).toEqual([]);
+    expect(state.notifications).toEqual([]);
+  });
+
   it("promotes the earliest waitlisted player and persists the promotion notification after a confirmed leave", async () => {
     const state = createTransaction([{ id: 1, userId: 10, state: "confirmed" }, { id: 2, userId: 11, state: "waitlisted" }], 1);
     await expect(applyRsvpAction(state.transaction, { userId: 10, gameId: 20, gameTitle: "Open play", capacity: state.capacity, action: "leave" })).resolves.toMatchObject({ promotedUserId: 11, changed: true });
