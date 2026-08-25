@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { confirmedGameDelivery, organizerUpdateDelivery, persistInAppDeliveries, shouldDeliverInApp, waitlistPromotionDelivery } from "./notificationService";
+import { confirmedGameDelivery, dispatchInAppOutbox, organizerUpdateDelivery, persistInAppDeliveries, shouldDeliverInApp, waitlistPromotionDelivery } from "./notificationService";
 
 describe("in-app notification delivery", () => {
   it("describes both confirmed and waitlisted RSVP outcomes without email delivery", () => {
@@ -28,5 +28,14 @@ describe("in-app notification delivery", () => {
     expect(values).toHaveBeenNthCalledWith(1, delivery);
     expect(values).toHaveBeenNthCalledWith(2, { notificationId: 42, state: "queued" });
     expect(values).toHaveBeenNthCalledWith(3, expect.objectContaining({ notificationId: 42, channel: "in_app", state: "delivered" }));
+  });
+
+  it("marks a queued in-app outbox row delivered through the deterministic dispatcher", async () => {
+    const where = vi.fn().mockResolvedValue(undefined);
+    const set = vi.fn().mockReturnValue({ where });
+    const repository = { insert: vi.fn(), update: vi.fn().mockReturnValue({ set }) };
+    await expect(dispatchInAppOutbox(repository, 42)).resolves.toBe(true);
+    expect(repository.update).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ state: "delivered", attempts: 1, lastError: null }));
   });
 });
