@@ -17,6 +17,11 @@ export function assertOpenReportTransition(status: "open" | "reviewing" | "close
   if (status === "closed") throw new Error(action === "assign" ? "Closed reports cannot be assigned." : "This report has already been resolved.");
 }
 
+export function assertReportAvailableForTransition(report: { status: "open" | "reviewing" | "closed" } | undefined, action: "assign" | "resolve") {
+  if (!report) throw new Error("This report is no longer available.");
+  assertOpenReportTransition(report.status, action);
+}
+
 export async function listReportsForReviewer<T>(repository: ModerationRepository<T>, role: CommunityRole) {
   requireReviewAccess(role);
   return repository.listReports();

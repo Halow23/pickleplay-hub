@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { assertOpenReportTransition, canApplyReportSanction, listReportsForReviewer, setReportReviewStatus } from "./moderationService";
+import { assertOpenReportTransition, assertReportAvailableForTransition, canApplyReportSanction, listReportsForReviewer, setReportReviewStatus } from "./moderationService";
 
 describe("moderation review service", () => {
   it("rejects a player or organizer before any report query is executed", async () => {
@@ -30,5 +30,11 @@ describe("moderation review service", () => {
     expect(() => assertOpenReportTransition("reviewing", "resolve")).not.toThrow();
     expect(() => assertOpenReportTransition("closed", "assign")).toThrow("Closed reports cannot be assigned.");
     expect(() => assertOpenReportTransition("closed", "resolve")).toThrow("already been resolved");
+  });
+
+  it("rejects nonexistent reports before a transition can be persisted or audited", () => {
+    expect(() => assertReportAvailableForTransition(undefined, "assign")).toThrow("no longer available");
+    expect(() => assertReportAvailableForTransition({ status: "closed" }, "resolve")).toThrow("already been resolved");
+    expect(() => assertReportAvailableForTransition({ status: "open" }, "assign")).not.toThrow();
   });
 });

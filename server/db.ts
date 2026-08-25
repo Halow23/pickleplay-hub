@@ -20,7 +20,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { confirmedGameDelivery, organizerUpdateDelivery, persistInAppDeliveries, shouldDeliverInApp, waitlistPromotionDelivery } from "./notificationService";
-import { assertOpenReportTransition, listReportsForReviewer, setReportReviewStatus } from "./moderationService";
+import { assertReportAvailableForTransition, assertOpenReportTransition, listReportsForReviewer, setReportReviewStatus } from "./moderationService";
 import { applyRsvpAction } from "./rsvpService";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -365,8 +365,7 @@ export async function assignCommunityReport(actor: { id: number; role: "user" | 
   if (!db) throw new Error("Community data is temporarily unavailable.");
   await db.transaction(async tx => {
     const report = (await tx.select({ id: reports.id, status: reports.status }).from(reports).where(eq(reports.id, reportId)).limit(1).for("update"))[0];
-    if (!report) throw new Error("This report is no longer available.");
-    assertOpenReportTransition(report.status, "assign");
+    assertReportAvailableForTransition(report, "assign");
     await tx.update(reports).set({ assignedTo: actor.id, status: "reviewing" }).where(eq(reports.id, reportId));
     await tx.insert(auditEvents).values({ actorId: actor.id, eventType: "report_assigned", subjectType: "report", subjectId: reportId, metadata: JSON.stringify({ assignedTo: actor.id }) });
   });
@@ -380,8 +379,7 @@ export async function resolveCommunityReport(actor: { id: number; role: "user" |
   if (!db) throw new Error("Community data is temporarily unavailable.");
   await db.transaction(async tx => {
     const report = (await tx.select({ id: reports.id, status: reports.status }).from(reports).where(eq(reports.id, input.reportId)).limit(1).for("update"))[0];
-    if (!report) throw new Error("This report is no longer available.");
-    assertOpenReportTransition(report.status, "resolve");
+    assertReportAvailableForTransition(report, "resolve");
     await tx.update(reports).set({ status: "closed", assignedTo: actor.id, resolutionReason: input.resolutionReason, resolutionNote: input.resolutionNote || null, sanction: input.sanction, resolvedAt: new Date() }).where(eq(reports.id, input.reportId));
     await tx.insert(auditEvents).values({ actorId: actor.id, eventType: "report_resolved", subjectType: "report", subjectId: input.reportId, metadata: JSON.stringify({ resolutionReason: input.resolutionReason, sanction: input.sanction }) });
   });
