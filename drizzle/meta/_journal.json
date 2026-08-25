@@ -50,6 +50,13 @@
       "when": 1787638453721,
       "tag": "0006_eminent_colossus",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787638687653,
+      "tag": "0007_greedy_miracleman",
+      "breakpoints": true
     }
   ]
 }

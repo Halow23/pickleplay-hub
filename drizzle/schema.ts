@@ -347,6 +347,11 @@ export const reports = mysqlTable(
     reason: varchar("reason", { length: 120 }).notNull(),
     detail: text("detail"),
     status: mysqlEnum("status", ["open", "reviewing", "closed"]).default("open").notNull(),
+    assignedTo: int("assignedTo").references(() => users.id, { onDelete: "set null" }),
+    resolutionReason: varchar("resolutionReason", { length: 300 }),
+    resolutionNote: varchar("resolutionNote", { length: 600 }),
+    sanction: mysqlEnum("sanction", ["none", "warning", "suspension", "ban"]).default("none").notNull(),
+    resolvedAt: timestamp("resolvedAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   table => [index("reports_status_idx").on(table.status), index("reports_reporter_idx").on(table.reporterId)]
