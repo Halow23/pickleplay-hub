@@ -13,8 +13,9 @@ function createTransaction(initial: StoredRsvp[], capacity: number) {
     createKeys,
     transaction: {
       findExisting: async (userId: number) => rsvps.find(rsvp => rsvp.userId === userId),
+      findByIdempotencyKey: async (idempotencyKey: string) => rsvps.find(rsvp => rsvp.idempotencyKey === idempotencyKey),
       countConfirmed: async () => rsvps.filter(rsvp => rsvp.state === "confirmed").length,
-      create: async (userId: number, state: "confirmed" | "waitlisted", idempotencyKey?: string) => { createKeys.push(idempotencyKey); rsvps.push({ id: id++, userId, state }); },
+      create: async (userId: number, state: "confirmed" | "waitlisted", idempotencyKey?: string) => { createKeys.push(idempotencyKey); rsvps.push({ id: id++, userId, state, idempotencyKey }); },
       remove: async (targetId: number) => { const index = rsvps.findIndex(rsvp => rsvp.id === targetId); if (index >= 0) rsvps.splice(index, 1); },
       findEarliestWaitlisted: async () => rsvps.find(rsvp => rsvp.state === "waitlisted"),
       promote: async (targetId: number) => { const target = rsvps.find(rsvp => rsvp.id === targetId); if (target) target.state = "confirmed"; },
@@ -44,11 +45,23 @@ describe("persisted RSVP transaction behavior", () => {
     expect(state.createKeys).toEqual(["join-request-0001"]);
   });
 
+  it("returns the original RSVP result when a join request is retried with the same key", async () => {
+    const state = createTransaction([{ id: 1, userId: 11, state: "confirmed", idempotencyKey: "join-request-0001" }], 2);
+    await expect(applyRsvpAction(state.transaction, { userId: 11, gameId: 20, gameTitle: "Open play", capacity: state.capacity, action: "join", idempotencyKey: "join-request-0001" })).resolves.toMatchObject({ state: "confirmed", changed: false });
+    expect(state.createKeys).toEqual([]);
+  });
+
   it("rejects a new RSVP once the two-hour cutoff has passed", async () => {
     const state = createTransaction([], 2);
     await expect(applyRsvpAction(state.transaction, { userId: 11, gameId: 20, gameTitle: "Open play", capacity: state.capacity, action: "join", startsAt: 10_000_000, now: 2_800_000 })).rejects.toThrow("RSVPs close two hours before the game begins.");
     expect(state.rsvps).toEqual([]);
     expect(state.notifications).toEqual([]);
+  });
+
+  it("rejects non-zero guest counts under the approved no-guest policy", async () => {
+    const state = createTransaction([], 2);
+    await expect(applyRsvpAction(state.transaction, { userId: 11, gameId: 20, gameTitle: "Open play", capacity: state.capacity, action: "join", guestCount: 1 })).rejects.toThrow("Guest RSVPs are not available");
+    expect(state.rsvps).toEqual([]);
   });
 
   it("promotes the earliest waitlisted player and persists the promotion notification after a confirmed leave", async () => {

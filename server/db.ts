@@ -8,6 +8,7 @@ import {
   gamePosts,
   groupMemberships,
   InsertUser,
+  notificationPreferences,
   notifications,
   playerProfiles,
   reports,
@@ -18,7 +19,7 @@ import {
   venueSources,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
-import { confirmedGameDelivery, organizerUpdateDelivery, persistInAppDeliveries, waitlistPromotionDelivery } from "./notificationService";
+import { confirmedGameDelivery, organizerUpdateDelivery, persistInAppDeliveries, shouldDeliverInApp, waitlistPromotionDelivery } from "./notificationService";
 import { assertOpenReportTransition, listReportsForReviewer, setReportReviewStatus } from "./moderationService";
 import { applyRsvpAction } from "./rsvpService";
 
@@ -299,12 +300,16 @@ export async function respondToGame(userId: number, gameId: number, action: "joi
 
     return applyRsvpAction({
       findExisting: async requestedUserId => (await tx.select().from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.userId, requestedUserId))).limit(1))[0],
+      findByIdempotencyKey: async requestKey => (await tx.select().from(rsvps).where(eq(rsvps.idempotencyKey, requestKey)).limit(1))[0],
       countConfirmed: async () => Number((await tx.select({ total: count(rsvps.id) }).from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.state, "confirmed"))))[0]?.total ?? 0),
       create: async (requestedUserId, state, requestKey) => { await tx.insert(rsvps).values({ gameId, userId: requestedUserId, state, guestCount: 0, idempotencyKey: requestKey || null }); },
       remove: async rsvpId => { await tx.delete(rsvps).where(eq(rsvps.id, rsvpId)); },
       findEarliestWaitlisted: async () => (await tx.select().from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.state, "waitlisted"))).orderBy(asc(rsvps.createdAt), asc(rsvps.id)).limit(1).for("update"))[0],
       promote: async rsvpId => { await tx.update(rsvps).set({ state: "confirmed", updatedAt: new Date() }).where(eq(rsvps.id, rsvpId)); },
-      notify: async delivery => { await persistInAppDeliveries(tx, delivery); },
+      notify: async delivery => {
+        const preference = (await tx.select({ inAppEnabled: notificationPreferences.inAppEnabled, gameUpdatesEnabled: notificationPreferences.gameUpdatesEnabled, waitlistUpdatesEnabled: notificationPreferences.waitlistUpdatesEnabled }).from(notificationPreferences).where(eq(notificationPreferences.userId, delivery.userId)).limit(1))[0];
+        if (shouldDeliverInApp(preference || { inAppEnabled: true, gameUpdatesEnabled: true, waitlistUpdatesEnabled: true }, delivery.type)) await persistInAppDeliveries(tx, delivery);
+      },
     }, { userId, gameId, gameTitle: game.title, capacity: game.capacity, action, idempotencyKey, startsAt: game.startsAt.getTime(), rsvpDeadlineAt: game.rsvpDeadlineAt?.getTime() });
   });
 }

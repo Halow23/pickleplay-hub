@@ -3,10 +3,11 @@ import { confirmedGameDelivery, InAppDelivery, waitlistPromotionDelivery } from 
 
 export type RsvpState = "confirmed" | "waitlisted";
 
-export type StoredRsvp = { id: number; userId: number; state: RsvpState };
+export type StoredRsvp = { id: number; userId: number; state: RsvpState; idempotencyKey?: string | null };
 
 export type RsvpTransaction = {
   findExisting: (userId: number) => Promise<StoredRsvp | undefined>;
+  findByIdempotencyKey?: (idempotencyKey: string) => Promise<StoredRsvp | undefined>;
   countConfirmed: () => Promise<number>;
   create: (userId: number, state: RsvpState, idempotencyKey?: string) => Promise<void>;
   remove: (id: number) => Promise<void>;
@@ -17,8 +18,16 @@ export type RsvpTransaction = {
 
 export async function applyRsvpAction(
   transaction: RsvpTransaction,
-  input: { userId: number; gameId: number; gameTitle: string; capacity: number; action: "join" | "leave"; idempotencyKey?: string; startsAt?: number; rsvpDeadlineAt?: number; now?: number }
+  input: { userId: number; gameId: number; gameTitle: string; capacity: number; action: "join" | "leave"; guestCount?: number; idempotencyKey?: string; startsAt?: number; rsvpDeadlineAt?: number; now?: number }
 ) {
+  if ((input.guestCount ?? 0) !== 0) throw new Error("Guest RSVPs are not available in PicklePlay.");
+  if (input.action === "join" && input.idempotencyKey && transaction.findByIdempotencyKey) {
+    const replay = await transaction.findByIdempotencyKey(input.idempotencyKey);
+    if (replay) {
+      if (replay.userId !== input.userId) throw new Error("This RSVP request key has already been used.");
+      return { state: replay.state, changed: false, promotedUserId: null };
+    }
+  }
   const existing = await transaction.findExisting(input.userId);
 
   if (input.action === "join") {

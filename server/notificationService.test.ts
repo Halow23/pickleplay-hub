@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { confirmedGameDelivery, organizerUpdateDelivery, persistInAppDeliveries, waitlistPromotionDelivery } from "./notificationService";
+import { confirmedGameDelivery, organizerUpdateDelivery, persistInAppDeliveries, shouldDeliverInApp, waitlistPromotionDelivery } from "./notificationService";
 
 describe("in-app notification delivery", () => {
   it("describes both confirmed and waitlisted RSVP outcomes without email delivery", () => {
@@ -10,6 +10,12 @@ describe("in-app notification delivery", () => {
   it("creates specific promotion and organizer-update messages", () => {
     expect(waitlistPromotionDelivery(7, 8, "Sunset doubles").type).toBe("waitlist_promoted");
     expect(organizerUpdateDelivery(7, 8, "Courts moved indoors")).toMatchObject({ type: "organizer_update", body: "Courts moved indoors" });
+  });
+
+  it("suppresses only the in-app categories a player has disabled", () => {
+    expect(shouldDeliverInApp({ inAppEnabled: true, gameUpdatesEnabled: false, waitlistUpdatesEnabled: true }, "organizer_update")).toBe(false);
+    expect(shouldDeliverInApp({ inAppEnabled: true, gameUpdatesEnabled: false, waitlistUpdatesEnabled: true }, "waitlist_promoted")).toBe(true);
+    expect(shouldDeliverInApp({ inAppEnabled: false, gameUpdatesEnabled: true, waitlistUpdatesEnabled: true }, "game_confirmed")).toBe(false);
   });
 
   it("persists an in-app notification with queued outbox and delivered channel records", async () => {

@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { notificationDeliveryRecords, notificationOutbox, notifications } from "../drizzle/schema";
 
 /**
@@ -31,7 +32,15 @@ export function organizerUpdateDelivery(userId: number, gameId: number, message:
   return { userId, gameId, type: "organizer_update", title: "Organizer update", body: message };
 }
 
-type NotificationRepository = { insert: Function };
+type NotificationRepository = { insert: Function; update?: Function };
+
+export type NotificationPreferenceSnapshot = { inAppEnabled: boolean; gameUpdatesEnabled: boolean; waitlistUpdatesEnabled: boolean };
+
+export function shouldDeliverInApp(preferences: NotificationPreferenceSnapshot | undefined, type: InAppDelivery["type"]) {
+  if (!preferences || !preferences.inAppEnabled) return false;
+  if (type === "organizer_update") return preferences.gameUpdatesEnabled;
+  return preferences.waitlistUpdatesEnabled;
+}
 
 function insertIdFrom(result: unknown) {
   if (Array.isArray(result) && result[0] && typeof result[0] === "object" && "insertId" in result[0]) return Number((result[0] as { insertId: number }).insertId);
@@ -49,6 +58,13 @@ export async function persistInAppDeliveries(repository: NotificationRepository,
     notificationIds.push(notificationId);
     await repository.insert(notificationOutbox).values({ notificationId, state: "queued" });
     await repository.insert(notificationDeliveryRecords).values({ notificationId, channel: "in_app", state: "delivered", detail: "Rendered in the PicklePlay notification center.", deliveredAt: new Date() });
+    await dispatchInAppOutbox(repository, notificationId);
   }
   return notificationIds;
+}
+
+export async function dispatchInAppOutbox(repository: NotificationRepository, notificationId: number) {
+  if (!repository.update) return false;
+  await repository.update(notificationOutbox).set({ state: "delivered", attempts: 1, lockedAt: new Date(), lastError: null }).where(eq(notificationOutbox.notificationId, notificationId));
+  return true;
 }

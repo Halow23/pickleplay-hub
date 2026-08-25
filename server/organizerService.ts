@@ -33,6 +33,12 @@ export function selectCreatedOrganizerGame<T extends { slug: string }>(rows: rea
   return created;
 }
 
+export function resolveRsvpDeadline(startsAt: Date, requestedDeadline?: Date | null) {
+  const deadline = requestedDeadline || new Date(startsAt.getTime() - 2 * 60 * 60 * 1000);
+  if (deadline.getTime() >= startsAt.getTime()) throw new Error("The RSVP deadline must be before the game begins.");
+  return deadline;
+}
+
 async function writeAudit(actorId: number, eventType: string, subjectType: string, subjectId: number, metadata: Record<string, unknown>) {
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
@@ -67,9 +73,11 @@ export async function createOrganizerGame(actor: OrganizerActor, input: GameInpu
   const venue = (await db.select({ id: venues.id }).from(venues).where(eq(venues.id, input.venueId)).limit(1))[0];
   if (!venue) throw new Error("The selected venue is unavailable.");
   const now = new Date();
+  const rsvpDeadlineAt = resolveRsvpDeadline(input.startsAt, input.rsvpDeadlineAt);
   const slug = makeSlug(input.title);
   await db.insert(games).values({
     ...input,
+    rsvpDeadlineAt,
     groupId: input.groupId || null,
     slug,
     organizerId: actor.id,
@@ -91,7 +99,8 @@ export async function updateOrganizerGame(actor: OrganizerActor, gameId: number,
   if (!db) throw new Error("Community data is temporarily unavailable.");
   const confirmed = Number((await db.select({ total: count(rsvps.id) }).from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.state, "confirmed"))))[0]?.total ?? 0);
   assertSafeCapacityChange(game.capacity, input.capacity, confirmed);
-  await db.update(games).set({ ...input, groupId: input.groupId || null, updatedBy: actor.id, updatedAt: new Date() }).where(eq(games.id, gameId));
+  const rsvpDeadlineAt = resolveRsvpDeadline(input.startsAt, input.rsvpDeadlineAt);
+  await db.update(games).set({ ...input, rsvpDeadlineAt, groupId: input.groupId || null, updatedBy: actor.id, updatedAt: new Date() }).where(eq(games.id, gameId));
   await writeAudit(actor.id, "game_updated", "game", gameId, { capacity: input.capacity, startsAt: input.startsAt.toISOString() });
   return { updated: true };
 }
