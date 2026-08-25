@@ -296,7 +296,7 @@ export async function respondToGame(userId: number, gameId: number, action: "joi
       findEarliestWaitlisted: async () => (await tx.select().from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.state, "waitlisted"))).orderBy(asc(rsvps.createdAt), asc(rsvps.id)).limit(1).for("update"))[0],
       promote: async rsvpId => { await tx.update(rsvps).set({ state: "confirmed", updatedAt: new Date() }).where(eq(rsvps.id, rsvpId)); },
       notify: async delivery => { await persistInAppDeliveries(tx, delivery); },
-    }, { userId, gameId, gameTitle: game.title, capacity: game.capacity, action });
+    }, { userId, gameId, gameTitle: game.title, capacity: game.capacity, action, startsAt: game.startsAt.getTime(), rsvpDeadlineAt: game.rsvpDeadlineAt?.getTime() });
   });
 }
 
