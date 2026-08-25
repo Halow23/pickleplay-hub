@@ -20,6 +20,9 @@ export const attendanceStates = ["attended", "no_show", "late_cancel"] as const;
 export const notificationTypes = ["game_confirmed", "waitlist_promoted", "organizer_update"] as const;
 export const notificationChannels = ["in_app", "email"] as const;
 export const notificationDeliveryStates = ["queued", "delivered", "failed", "suppressed"] as const;
+export const venueReviewStates = ["open", "reviewing", "accepted", "rejected"] as const;
+export const venueVerificationStates = ["unverified", "claimed", "verified"] as const;
+export const venueStaffRoles = ["manager", "editor"] as const;
 
 /** Core identity record managed by Manus OAuth. */
 export const users = mysqlTable("users", {
@@ -72,6 +75,47 @@ export const venues = mysqlTable(
   },
   table => [uniqueIndex("venues_slug_unique").on(table.slug), index("venues_city_idx").on(table.city)]
 );
+
+export const venueSources = mysqlTable("venue_sources", {
+  id: int("id").autoincrement().primaryKey(),
+  venueId: int("venueId").notNull().references(() => venues.id, { onDelete: "cascade" }),
+  sourceLabel: varchar("sourceLabel", { length: 160 }).notNull(),
+  sourceUrl: varchar("sourceUrl", { length: 500 }),
+  verifiedAt: timestamp("verifiedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("venue_sources_venue_idx").on(table.venueId)]);
+
+export const venueClaims = mysqlTable("venue_claims", {
+  id: int("id").autoincrement().primaryKey(),
+  venueId: int("venueId").notNull().references(() => venues.id, { onDelete: "cascade" }),
+  claimantId: int("claimantId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  note: varchar("note", { length: 600 }),
+  state: mysqlEnum("state", venueReviewStates).notNull().default("open"),
+  reviewedBy: int("reviewedBy").references(() => users.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("venue_claims_venue_idx").on(table.venueId), index("venue_claims_state_idx").on(table.state)]);
+
+export const venueCorrections = mysqlTable("venue_corrections", {
+  id: int("id").autoincrement().primaryKey(),
+  venueId: int("venueId").notNull().references(() => venues.id, { onDelete: "cascade" }),
+  submittedBy: int("submittedBy").notNull().references(() => users.id, { onDelete: "cascade" }),
+  field: varchar("field", { length: 80 }).notNull(),
+  proposedValue: varchar("proposedValue", { length: 500 }).notNull(),
+  reason: varchar("reason", { length: 600 }),
+  state: mysqlEnum("state", venueReviewStates).notNull().default("open"),
+  reviewedBy: int("reviewedBy").references(() => users.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("venue_corrections_venue_idx").on(table.venueId), index("venue_corrections_state_idx").on(table.state)]);
+
+export const venueStaff = mysqlTable("venue_staff", {
+  id: int("id").autoincrement().primaryKey(),
+  venueId: int("venueId").notNull().references(() => venues.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: mysqlEnum("role", venueStaffRoles).notNull().default("editor"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [uniqueIndex("venue_staff_venue_user_unique").on(table.venueId, table.userId), index("venue_staff_user_idx").on(table.userId)]);
 
 export const communityGroups = mysqlTable(
   "community_groups",
