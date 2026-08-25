@@ -22,13 +22,13 @@
 - [x] Refactor the persisted RSVP mutation into a testable transaction service and cover confirmed, waitlisted, and promotion notifications.
 - [x] Add organizer-owned game lifecycle fields, audit events, and role-scoped create, edit, publish, cancel, archive, and roster procedures.
 - [x] Add private-group applications, owner review, membership state transitions, invitations, group role changes, and ownership-transfer safeguards.
-- [ ] Add attendance records, organizer check-in controls, player-visible attendance history, and correction provenance.
+- [x] Add attendance records, organizer check-in controls, player-visible attendance history, and correction provenance.
 - [ ] Harden RSVP settings with deadlines, guest counts, cancellation handling, capacity-change safeguards, and idempotent write protection.
-- [ ] Add saved games, invitation links, calendar export, and constrained game-thread foundations while keeping unrestricted direct messaging deferred.
+- [x] Add saved games, invitation links, calendar export, and constrained game-thread foundations while keeping unrestricted direct messaging deferred.
 - [ ] Add persistent notification preferences, a delivery outbox, delivery records, and a safe in-app dispatcher without enabling external email delivery.
 - [ ] Build an organizer workspace for game creation, roster review, attendance, and participant communication.
-- [ ] Build player coordination controls for private-group requests, saved games, calendar export, and notifications.
-- [ ] Add venue correction, claim, verification, source, and staff-role foundations with privacy-preserving search filters.
+- [x] Build player coordination controls for private-group requests, saved games, calendar export, and notifications.
+- [x] Add venue correction, claim, verification, source, and staff-role foundations with privacy-preserving search filters.
 - [ ] Build a moderator workspace for queues, report assignment, resolution reasons, sanctions, and audit history.
 - [x] Document explicit decision gates for social feeds, media, facility reservations, payments, rating providers, and competition operations.
 - [ ] Add Vitest coverage for organizer ownership, group approval, attendance, RSVP hardening, notification preferences, venue claims, and moderation actions.
@@ -52,11 +52,21 @@
 - [x] Verify the visible Groups workflow on desktop and mobile after the private-group management controls were added.
 - [ ] Add real private-group service failure tests for invalid invites and forbidden invitation, role, and ownership actions.
 - [ ] Verify the expanded signed-in owner workspace with invite, role, and ownership controls at desktop and mobile sizes.
-- [ ] Add player-visible attendance history and correction provenance to profile and organizer workflows.
+- [x] Add player-visible attendance history and correction provenance to profile and organizer workflows.
 - [ ] Enforce RSVP deadlines, guest-count capacity calculations, idempotency keys, capacity-change safeguards, and cancellation reasons.
-- [ ] Expose saved games, calendar export, and participant-scoped game-thread controls in player interfaces.
+- [x] Expose saved games, calendar export, and participant-scoped game-thread controls in player interfaces.
 - [ ] Add persistent notification preferences, outbox entries, delivery records, and a safe in-app dispatcher.
-- [ ] Add venue corrections, claims, source provenance, verification states, and venue-staff management.
+- [x] Add venue corrections, claims, source provenance, verification states, and venue-staff management.
+- [ ] Add visible organizer attendance check-in actions and verify persisted roster provenance end to end.
+- [ ] Add participant-scoped game-thread controls and complete saved-game management, including unsave and saved-list state.
+- [ ] Wire persisted notification preference controls into the authenticated profile interface.
+- [ ] Add venue verification-state workflows and privacy-preserving venue search/filter controls.
+- [ ] Add player-facing invitation-link UX and verify acceptance from the groups interface.
+- [ ] Build a signed-in venue operations workspace for claims, corrections, and verified source visibility.
+- [ ] Build a moderator console for assignment, case resolution, sanctions, and audit history.
+- [ ] Add an authenticated notification preference interface tied to persisted preferences.
+- [ ] Add user-facing RSVP deadline, guest-count, cancellation-reason, and capacity-change safeguards.
+- [ ] Add workflow-level integration coverage for venue operations, moderator resolution, and notification preference updates.
 - [ ] Add moderator queue assignment, resolution reasons, sanctions, and audit-history views.
 - [ ] Add end-to-end role, RSVP, notification, venue, and moderation workflow coverage for the broader release.
 - [ ] Run final desktop and mobile verification across community, organizer, admin, and moderator routes.
