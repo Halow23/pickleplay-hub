@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "./_core/context";
 
 const communityMocks = vi.hoisted(() => ({ createGroup: vi.fn(), members: vi.fn(), createInvite: vi.fn(), acceptInvite: vi.fn(), updateRole: vi.fn(), transferOwnership: vi.fn() }));
+const dbMocks = vi.hoisted(() => ({ assignReport: vi.fn(), resolveReport: vi.fn(), moderationAudit: vi.fn(), notificationPreferences: vi.fn(), updateNotificationPreferences: vi.fn() }));
 vi.mock("./communityService", () => ({
   acceptGroupInvite: communityMocks.acceptInvite,
   addGameThreadPost: vi.fn(),
@@ -32,10 +33,16 @@ vi.mock("./adminService", () => ({
     return { updated: true };
   }),
 }));
+vi.mock("./db", () => ({
+  createCommunityReport: vi.fn(), blockCommunityUser: vi.fn(), getModerationReports: vi.fn(), getModerationAudit: dbMocks.moderationAudit,
+  getCommunityDashboard: vi.fn(), joinCommunityGroup: vi.fn(), markNotificationsRead: vi.fn(), respondToGame: vi.fn(), reviewCommunityReport: vi.fn(),
+  assignCommunityReport: dbMocks.assignReport, resolveCommunityReport: dbMocks.resolveReport, sendGameUpdate: vi.fn(), updatePlayerProfile: vi.fn(),
+}));
+vi.mock("./notificationPreferences", () => ({ getNotificationPreferences: dbMocks.notificationPreferences, updateNotificationPreferences: dbMocks.updateNotificationPreferences }));
 
 import { appRouter } from "./routers";
 
-function context(role: "player" | "admin", openId = "member-open-id"): TrpcContext {
+function context(role: "player" | "moderator" | "admin", openId = "member-open-id"): TrpcContext {
   return { user: { id: 7, openId, name: "Happy Player", email: "happy@example.com", loginMethod: "manus", role, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() }, req: { headers: {} } as TrpcContext["req"], res: {} as TrpcContext["res"] };
 }
 
@@ -82,5 +89,24 @@ describe("signed-in route behavior", () => {
     await expect(caller.community.acceptGroupInvite({ token: "invalid-token" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.organizer.updateMemberRole({ groupId: 4, memberUserId: 9, role: "moderator" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.organizer.transferOwnership({ groupId: 4, successorUserId: 9 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("routes documented moderator assignment and resolution operations while exposing their audit history", async () => {
+    dbMocks.assignReport.mockResolvedValue({ updated: true });
+    dbMocks.resolveReport.mockResolvedValue({ updated: true });
+    dbMocks.moderationAudit.mockResolvedValue([{ id: 9, eventType: "report_resolved" }]);
+    const caller = appRouter.createCaller(context("moderator"));
+    await expect(caller.community.assignReport({ reportId: 4 })).resolves.toEqual({ updated: true });
+    await expect(caller.community.resolveReport({ reportId: 4, resolutionReason: "Guidance issued", sanction: "warning" })).resolves.toEqual({ updated: true });
+    await expect(caller.community.moderationAudit()).resolves.toEqual([{ id: 9, eventType: "report_resolved" }]);
+  });
+
+  it("routes persisted in-app notification preference reads and updates for signed-in players", async () => {
+    const preferences = { inAppEnabled: true, emailEnabled: false, gameUpdatesEnabled: true, waitlistUpdatesEnabled: false };
+    dbMocks.notificationPreferences.mockResolvedValue(preferences);
+    dbMocks.updateNotificationPreferences.mockResolvedValue({ ...preferences, waitlistUpdatesEnabled: true });
+    const caller = appRouter.createCaller(context("player"));
+    await expect(caller.community.notificationPreferences()).resolves.toEqual(preferences);
+    await expect(caller.community.updateNotificationPreferences({ ...preferences, waitlistUpdatesEnabled: true })).resolves.toMatchObject({ waitlistUpdatesEnabled: true });
   });
 });
