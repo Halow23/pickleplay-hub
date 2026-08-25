@@ -12,6 +12,7 @@ import VenueSourcesAdmin from "./pages/VenueSourcesAdmin";
 import NotificationSettings from "./pages/NotificationSettings";
 import GameThread from "./pages/GameThread";
 import ModeratorConsole from "./pages/ModeratorConsole";
+import OrganizerGameSettings from "./pages/OrganizerGameSettings";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -19,6 +20,7 @@ function Router() {
     <Switch>
       <Route path={"/"} component={Home} />
       <Route path={"/organizer"} component={Organizer} />
+      <Route path={"/organizer/games/:gameId"} component={OrganizerGameSettings} />
       <Route path={"/admin"} component={Admin} />
       <Route path={"/venues"} component={Venues} />
       <Route path={"/admin/venues"} component={VenueSourcesAdmin} />

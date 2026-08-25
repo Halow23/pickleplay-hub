@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "./_core/context";
 
 const communityMocks = vi.hoisted(() => ({ createGroup: vi.fn(), members: vi.fn(), createInvite: vi.fn(), acceptInvite: vi.fn(), updateRole: vi.fn(), transferOwnership: vi.fn() }));
-const dbMocks = vi.hoisted(() => ({ assignReport: vi.fn(), resolveReport: vi.fn(), moderationAudit: vi.fn(), notificationPreferences: vi.fn(), updateNotificationPreferences: vi.fn() }));
+const dbMocks = vi.hoisted(() => ({ assignReport: vi.fn(), resolveReport: vi.fn(), moderationAudit: vi.fn(), notificationPreferences: vi.fn(), updateNotificationPreferences: vi.fn(), respondToGame: vi.fn() }));
 vi.mock("./communityService", () => ({
   acceptGroupInvite: communityMocks.acceptInvite,
   addGameThreadPost: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock("./adminService", () => ({
 }));
 vi.mock("./db", () => ({
   createCommunityReport: vi.fn(), blockCommunityUser: vi.fn(), getModerationReports: vi.fn(), getModerationAudit: dbMocks.moderationAudit,
-  getCommunityDashboard: vi.fn(), joinCommunityGroup: vi.fn(), markNotificationsRead: vi.fn(), respondToGame: vi.fn(), reviewCommunityReport: vi.fn(),
+  getCommunityDashboard: vi.fn(), joinCommunityGroup: vi.fn(), markNotificationsRead: vi.fn(), respondToGame: dbMocks.respondToGame, reviewCommunityReport: vi.fn(),
   assignCommunityReport: dbMocks.assignReport, resolveCommunityReport: dbMocks.resolveReport, sendGameUpdate: vi.fn(), updatePlayerProfile: vi.fn(),
 }));
 vi.mock("./notificationPreferences", () => ({ getNotificationPreferences: dbMocks.notificationPreferences, updateNotificationPreferences: dbMocks.updateNotificationPreferences }));
@@ -108,5 +108,11 @@ describe("signed-in route behavior", () => {
     const caller = appRouter.createCaller(context("player"));
     await expect(caller.community.notificationPreferences()).resolves.toEqual(preferences);
     await expect(caller.community.updateNotificationPreferences({ ...preferences, waitlistUpdatesEnabled: true })).resolves.toMatchObject({ waitlistUpdatesEnabled: true });
+  });
+
+  it("rejects guest-count fields from the exposed RSVP contract before a join can be invoked", async () => {
+    const caller = appRouter.createCaller(context("player"));
+    await expect(caller.community.rsvp({ gameId: 4, action: "join", idempotencyKey: "no-guests-request-key", guestCount: 1 } as never)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(dbMocks.respondToGame).not.toHaveBeenCalled();
   });
 });

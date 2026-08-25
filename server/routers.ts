@@ -42,7 +42,7 @@ export const appRouter = router({
   community: router({
     dashboard: publicProcedure.query(async ({ ctx }) => getCommunityDashboard(ctx.user)),
     rsvp: protectedProcedure
-      .input(z.object({ gameId: z.number().int().positive(), action: z.enum(["join", "leave"]), idempotencyKey: z.string().trim().min(12).max(100).optional() }))
+      .input(z.object({ gameId: z.number().int().positive(), action: z.enum(["join", "leave"]), idempotencyKey: z.string().trim().min(12).max(100).optional() }).strict())
       .mutation(async ({ ctx, input }) => {
         try {
           return await respondToGame(ctx.user.id, input.gameId, input.action, input.idempotencyKey);

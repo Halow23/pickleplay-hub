@@ -156,6 +156,6 @@ export async function listOrganizerGames(actor: OrganizerActor) {
   if (!canCreateOrganizerGame(actor.role)) throw new Error("Organizer access is required.");
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
-  return db.select({ id: games.id, title: games.title, status: games.status, startsAt: games.startsAt, capacity: games.capacity, venueName: venues.name, visibility: games.visibility })
+  return db.select({ id: games.id, title: games.title, description: games.description, status: games.status, startsAt: games.startsAt, endsAt: games.endsAt, rsvpDeadlineAt: games.rsvpDeadlineAt, capacity: games.capacity, venueId: games.venueId, venueName: venues.name, groupId: games.groupId, format: games.format, skillBand: games.skillBand, visibility: games.visibility, beginnerFriendly: games.beginnerFriendly, attendanceNote: games.attendanceNote })
     .from(games).innerJoin(venues, eq(games.venueId, venues.id)).where(actor.role === "admin" ? undefined : eq(games.organizerId, actor.id)).orderBy(asc(games.startsAt));
 }

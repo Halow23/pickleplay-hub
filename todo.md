@@ -25,11 +25,11 @@
 - [x] Add attendance records, organizer check-in controls, player-visible attendance history, and correction provenance.
 - [ ] Harden RSVP settings with deadlines, guest counts, cancellation handling, capacity-change safeguards, and idempotent write protection.
 - [x] Add saved games, invitation links, calendar export, and constrained game-thread foundations while keeping unrestricted direct messaging deferred.
-- [ ] Add persistent notification preferences, a delivery outbox, delivery records, and a safe in-app dispatcher without enabling external email delivery.
+- [x] Add persistent notification preferences, a delivery outbox, delivery records, and a safe in-app dispatcher without enabling external email delivery.
 - [ ] Build an organizer workspace for game creation, roster review, attendance, and participant communication.
 - [x] Build player coordination controls for private-group requests, saved games, calendar export, and notifications.
 - [x] Add venue correction, claim, verification, source, and staff-role foundations with privacy-preserving search filters.
-- [ ] Build a moderator workspace for queues, report assignment, resolution reasons, sanctions, and audit history.
+- [x] Build a moderator workspace for queues, report assignment, resolution reasons, sanctions, and audit history.
 - [x] Document explicit decision gates for social feeds, media, facility reservations, payments, rating providers, and competition operations.
 - [ ] Add Vitest coverage for organizer ownership, group approval, attendance, RSVP hardening, notification preferences, venue claims, and moderation actions.
 - [ ] Run migration review, type checks, unit tests, and desktop/mobile visual verification for the roadmap release.
@@ -57,24 +57,30 @@
 - [x] Expose saved games, calendar export, and participant-scoped game-thread controls in player interfaces.
 - [ ] Add persistent notification preferences, outbox entries, delivery records, and a safe in-app dispatcher.
 - [x] Add venue corrections, claims, source provenance, verification states, and venue-staff management.
-- [ ] Add visible organizer attendance check-in actions and verify persisted roster provenance end to end.
+- [x] Add visible organizer attendance check-in actions and verify persisted roster provenance end to end.
 - [ ] Add participant-scoped game-thread controls and complete saved-game management, including unsave and saved-list state.
-- [ ] Wire persisted notification preference controls into the authenticated profile interface.
-- [ ] Add venue verification-state workflows and privacy-preserving venue search/filter controls.
+- [x] Wire persisted notification preference controls into the authenticated profile interface.
+- [x] Add venue verification-state workflows and privacy-preserving venue search/filter controls.
 - [ ] Add player-facing invitation-link UX and verify acceptance from the groups interface.
-- [ ] Build a signed-in venue operations workspace for claims, corrections, and verified source visibility.
-- [ ] Build a moderator console for assignment, case resolution, sanctions, and audit history.
-- [ ] Add an authenticated notification preference interface tied to persisted preferences.
+- [x] Build a signed-in venue operations workspace for claims, corrections, and verified source visibility.
+- [x] Build a moderator console for assignment, case resolution, sanctions, and audit history.
+- [x] Add an authenticated notification preference interface tied to persisted preferences.
 - [ ] Add user-facing RSVP deadline, guest-count, cancellation-reason, and capacity-change safeguards.
 - [ ] Add workflow-level integration coverage for venue operations, moderator resolution, and notification preference updates.
-- [ ] Enforce the approved no-guest RSVP policy, two-hour cutoff, idempotency protection, and organizer-only capacity and cancellation controls.
-- [ ] Add administrator-led venue verification decisions and display verified provenance to signed-in players.
-- [ ] Add player-facing venue claim and correction submission controls with privacy-aware venue filtering.
-- [ ] Add moderator queue assignment, resolution reasons, sanctions, and audit-history views.
+- [x] Enforce the approved no-guest RSVP policy, two-hour cutoff, idempotency protection, and organizer-only capacity and cancellation controls.
+- [x] Add administrator-led venue verification decisions and display verified provenance to signed-in players.
+- [x] Add player-facing venue claim and correction submission controls with privacy-aware venue filtering.
+- [x] Add moderator queue assignment, resolution reasons, sanctions, and audit-history views.
 - [ ] Add end-to-end role, RSVP, notification, venue, and moderation workflow coverage for the broader release.
 - [ ] Run final desktop and mobile verification across community, organizer, admin, and moderator routes.
 - [x] Add privacy-safe city, neighborhood, indoor, and lighting filters to the member venue workspace.
-- [ ] Return venue-source provenance with public venue listings and display source labels, links, and verification dates to members.
+- [x] Return venue-source provenance with public venue listings and display source labels, links, and verification dates to members.
 - [ ] Require recorded source provenance before an administrator can mark a venue as verified, and expose source creation in the administrator console.
 - [x] Reject nonexistent or closed report transitions before writing moderation audit events, with service-level coverage.
 - [ ] Add workflow-level moderator tests for assignment, resolution detail persistence, sanction restrictions, and audit-event creation.
+- [ ] Render persisted notification preference switches directly in the authenticated profile view with loading, saving, and error states.
+- [ ] Add inline notification-preference load errors and visible saving feedback to the authenticated profile panel, then verify authenticated mobile and desktop rendering.
+- [x] Show RSVP deadline and closed/cancelled status with a cancellation reason on player game cards, disabling joins with clear messages when RSVP is closed.
+- [x] Add explicit no-guest messaging to the RSVP interface and verify that no guest input is reachable.
+- [ ] Verify organizer capacity-reduction validation and error messaging end to end, including responsive review of the management screen.
+- [x] Search every client RSVP entry point for guest controls and add focused regression coverage proving guests cannot be submitted or edited.
