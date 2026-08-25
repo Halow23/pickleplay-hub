@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveRsvpDeadline, selectCreatedOrganizerGame } from "./organizerService";
+import { assertCancellationReason, resolveRsvpDeadline, selectCreatedOrganizerGame } from "./organizerService";
 
 describe("organizer game creation lookup", () => {
   it("selects the exact newly inserted slug when an organizer has older games", () => {
@@ -14,5 +14,10 @@ describe("organizer game creation lookup", () => {
     const startsAt = new Date("2026-08-30T18:00:00.000Z");
     expect(resolveRsvpDeadline(startsAt)).toEqual(new Date("2026-08-30T16:00:00.000Z"));
     expect(() => resolveRsvpDeadline(startsAt, startsAt)).toThrow("must be before");
+  });
+
+  it("requires organizers to document a meaningful cancellation reason", () => {
+    expect(() => assertCancellationReason("  ")).toThrow("cancellation reason is required");
+    expect(assertCancellationReason("  Courts closed for maintenance ")).toBe("Courts closed for maintenance");
   });
 });

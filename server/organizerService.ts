@@ -39,6 +39,11 @@ export function resolveRsvpDeadline(startsAt: Date, requestedDeadline?: Date | n
   return deadline;
 }
 
+export function assertCancellationReason(reason: string) {
+  if (reason.trim().length < 3) throw new Error("A cancellation reason is required.");
+  return reason.trim();
+}
+
 async function writeAudit(actorId: number, eventType: string, subjectType: string, subjectId: number, metadata: Record<string, unknown>) {
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
@@ -116,16 +121,17 @@ export async function publishOrganizerGame(actor: OrganizerActor, gameId: number
 }
 
 export async function cancelOrganizerGame(actor: OrganizerActor, gameId: number, reason: string) {
+  const cancellationReason = assertCancellationReason(reason);
   const game = await getManagedGame(actor, gameId);
   if (game.status === "cancelled") return { cancelled: false, recipientCount: 0 };
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
   const attendees = await db.select({ userId: rsvps.userId }).from(rsvps).where(and(eq(rsvps.gameId, gameId), inArray(rsvps.state, ["confirmed", "waitlisted"])));
   await db.transaction(async tx => {
-    await tx.update(games).set({ status: "cancelled", cancellationReason: reason, cancelledAt: new Date(), updatedBy: actor.id }).where(eq(games.id, gameId));
-    if (attendees.length) await persistInAppDeliveries(tx, attendees.map(attendee => organizerUpdateDelivery(attendee.userId, gameId, `Cancelled: ${game.title}. ${reason}`)));
+    await tx.update(games).set({ status: "cancelled", cancellationReason, cancelledAt: new Date(), updatedBy: actor.id }).where(eq(games.id, gameId));
+    if (attendees.length) await persistInAppDeliveries(tx, attendees.map(attendee => organizerUpdateDelivery(attendee.userId, gameId, `Cancelled: ${game.title}. ${cancellationReason}`)));
   });
-  await writeAudit(actor.id, "game_cancelled", "game", gameId, { reason, recipientCount: attendees.length });
+  await writeAudit(actor.id, "game_cancelled", "game", gameId, { reason: cancellationReason, recipientCount: attendees.length });
   return { cancelled: true, recipientCount: attendees.length };
 }
 
