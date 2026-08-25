@@ -1,28 +1,211 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  boolean,
+  index,
+  int,
+  mysqlEnum,
+  mysqlTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  varchar,
+} from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
+export const userRoles = ["user", "player", "organizer", "moderator", "admin"] as const;
+export const gameVisibility = ["public", "private"] as const;
+export const rsvpStates = ["confirmed", "waitlisted"] as const;
+export const groupMembershipRoles = ["member", "moderator", "owner"] as const;
+export const notificationTypes = ["game_confirmed", "waitlist_promoted", "organizer_update"] as const;
+
+/** Core identity record managed by Manus OAuth. */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: mysqlEnum("role", userRoles).default("player").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export const playerProfiles = mysqlTable(
+  "player_profiles",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    displayName: varchar("displayName", { length: 120 }).notNull(),
+    city: varchar("city", { length: 120 }).notNull().default("Your local area"),
+    bio: text("bio"),
+    skillBand: varchar("skillBand", { length: 80 }).notNull().default("Finding my starting point"),
+    ratingProvenance: mysqlEnum("ratingProvenance", ["none", "self_described", "linked_provider"])
+      .default("none")
+      .notNull(),
+    visibility: mysqlEnum("visibility", ["community", "private"]).default("community").notNull(),
+    preferredFormats: varchar("preferredFormats", { length: 180 }).notNull().default("Open play, doubles"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [uniqueIndex("player_profiles_user_unique").on(table.userId)]
+);
+
+export const venues = mysqlTable(
+  "venues",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    slug: varchar("slug", { length: 80 }).notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    neighborhood: varchar("neighborhood", { length: 120 }).notNull(),
+    city: varchar("city", { length: 120 }).notNull(),
+    addressLabel: varchar("addressLabel", { length: 200 }).notNull(),
+    courtCount: int("courtCount").notNull().default(1),
+    indoor: boolean("indoor").notNull().default(false),
+    lighting: boolean("lighting").notNull().default(false),
+    visibility: mysqlEnum("visibility", gameVisibility).default("public").notNull(),
+    accessibilityNote: varchar("accessibilityNote", { length: 220 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [uniqueIndex("venues_slug_unique").on(table.slug), index("venues_city_idx").on(table.city)]
+);
+
+export const communityGroups = mysqlTable(
+  "community_groups",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    slug: varchar("slug", { length: 80 }).notNull(),
+    ownerId: int("ownerId").notNull().references(() => users.id, { onDelete: "restrict" }),
+    name: varchar("name", { length: 160 }).notNull(),
+    description: text("description").notNull(),
+    neighborhood: varchar("neighborhood", { length: 120 }).notNull(),
+    visibility: mysqlEnum("visibility", gameVisibility).default("public").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [uniqueIndex("community_groups_slug_unique").on(table.slug), index("community_groups_owner_idx").on(table.ownerId)]
+);
+
+export const groupMemberships = mysqlTable(
+  "group_memberships",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    groupId: int("groupId").notNull().references(() => communityGroups.id, { onDelete: "cascade" }),
+    userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    role: mysqlEnum("role", groupMembershipRoles).default("member").notNull(),
+    joinedAt: timestamp("joinedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("group_memberships_group_user_unique").on(table.groupId, table.userId),
+    index("group_memberships_user_idx").on(table.userId),
+  ]
+);
+
+export const games = mysqlTable(
+  "games",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    slug: varchar("slug", { length: 100 }).notNull(),
+    organizerId: int("organizerId").notNull().references(() => users.id, { onDelete: "restrict" }),
+    venueId: int("venueId").notNull().references(() => venues.id, { onDelete: "restrict" }),
+    groupId: int("groupId").references(() => communityGroups.id, { onDelete: "set null" }),
+    title: varchar("title", { length: 180 }).notNull(),
+    description: text("description").notNull(),
+    format: varchar("format", { length: 80 }).notNull(),
+    skillBand: varchar("skillBand", { length: 80 }).notNull(),
+    capacity: int("capacity").notNull(),
+    visibility: mysqlEnum("visibility", gameVisibility).default("public").notNull(),
+    beginnerFriendly: boolean("beginnerFriendly").notNull().default(false),
+    attendanceNote: varchar("attendanceNote", { length: 240 }).notNull(),
+    startsAt: timestamp("startsAt").notNull(),
+    endsAt: timestamp("endsAt").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("games_slug_unique").on(table.slug),
+    index("games_venue_idx").on(table.venueId),
+    index("games_organizer_idx").on(table.organizerId),
+    index("games_start_idx").on(table.startsAt),
+  ]
+);
+
+export const gamePosts = mysqlTable(
+  "game_posts",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    gameId: int("gameId").notNull().references(() => games.id, { onDelete: "cascade" }),
+    groupId: int("groupId").references(() => communityGroups.id, { onDelete: "set null" }),
+    authorId: int("authorId").notNull().references(() => users.id, { onDelete: "restrict" }),
+    headline: varchar("headline", { length: 180 }).notNull(),
+    body: text("body").notNull(),
+    attendanceExpectations: varchar("attendanceExpectations", { length: 240 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [uniqueIndex("game_posts_game_unique").on(table.gameId), index("game_posts_group_idx").on(table.groupId)]
+);
+
+export const rsvps = mysqlTable(
+  "rsvps",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    gameId: int("gameId").notNull().references(() => games.id, { onDelete: "cascade" }),
+    userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    state: mysqlEnum("state", rsvpStates).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("rsvps_game_user_unique").on(table.gameId, table.userId),
+    index("rsvps_game_state_idx").on(table.gameId, table.state),
+    index("rsvps_user_idx").on(table.userId),
+  ]
+);
+
+export const notifications = mysqlTable(
+  "notifications",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    gameId: int("gameId").references(() => games.id, { onDelete: "set null" }),
+    type: mysqlEnum("type", notificationTypes).notNull(),
+    title: varchar("title", { length: 180 }).notNull(),
+    body: text("body").notNull(),
+    readAt: timestamp("readAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("notifications_user_created_idx").on(table.userId, table.createdAt)]
+);
+
+export const userBlocks = mysqlTable(
+  "user_blocks",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    blockerId: int("blockerId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    blockedUserId: int("blockedUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    reason: varchar("reason", { length: 120 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("user_blocks_pair_unique").on(table.blockerId, table.blockedUserId),
+    index("user_blocks_blocker_idx").on(table.blockerId),
+  ]
+);
+
+export const reports = mysqlTable(
+  "reports",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    reporterId: int("reporterId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    subjectType: mysqlEnum("subjectType", ["profile", "group", "game", "game_post"]).notNull(),
+    subjectId: int("subjectId").notNull(),
+    reason: varchar("reason", { length: 120 }).notNull(),
+    detail: text("detail"),
+    status: mysqlEnum("status", ["open", "reviewing", "closed"]).default("open").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("reports_status_idx").on(table.status), index("reports_reporter_idx").on(table.reporterId)]
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
-
-// TODO: Add your tables here
+export type PlayerProfile = typeof playerProfiles.$inferSelect;

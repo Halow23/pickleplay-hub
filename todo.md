@@ -1,0 +1,22 @@
+# Project TODO
+
+- [x] Define persistent domain models for player profiles, venues, groups, games, game posts, RSVPs, notifications, and moderation reports.
+- [x] Extend role-aware authorization for player, organizer, community moderator, and platform admin scopes.
+- [x] Seed a local, fictional community dataset through development-only server data helpers without fabricated reviews, ratings, or testimonials.
+- [x] Implement a transactional RSVP workflow with confirmed, waitlisted, and leave states while enforcing game capacity.
+- [x] Promote the earliest waitlisted RSVP when a confirmed player leaves, and create an in-app notification.
+- [x] Create player profile persistence with inclusive self-described skill bands, rating-provenance labels, privacy controls, and report/block entry points.
+- [x] Create persistent groups, memberships, and organizer-created game posts with host and attendance context.
+- [x] Create in-app organizer update notifications and a clearly scoped notification delivery abstraction for future email support.
+- [x] Build responsive Explore, Play, Groups, and Profile navigation with clear active states and keyboard-accessible interactions.
+- [x] Build elegant game and court discovery cards with location, schedule, format, skill band, capacity, and public/private visibility information.
+- [x] Build community, guidelines, safety, privacy, and beginner-friendly signals into the dashboard experience.
+- [x] Document the MVP roadmap, research-informed product boundaries, and deferred reservations, payments, rating integrations, and competition management capabilities.
+- [x] Add Vitest coverage for RSVP capacity, waitlist promotion, authorization-sensitive flows, and notification creation.
+- [x] Run application type checks, unit tests, and visual responsive verification.
+- [x] Add moderator and admin report-review procedures with role-specific safeguards and test coverage.
+- [x] Add persisted player blocking, exclude blocked hosts from discovery, and expose a block-host entry point.
+- [x] Extract notification writes behind an in-app delivery service boundary that can support opt-in email delivery later.
+- [x] Add unit coverage for persisted RSVP outcome notifications and moderator-review authorization rules.
+- [x] Add direct procedure-service tests for moderator and admin report review authorization.
+- [x] Refactor the persisted RSVP mutation into a testable transaction service and cover confirmed, waitlisted, and promotion notifications.
