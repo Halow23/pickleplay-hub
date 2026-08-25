@@ -34,7 +34,7 @@ export default function Organizer() {
     onError: error => toast.error(error.message),
   });
 
-  if (loading) return <div className="min-h-screen bg-[#f5f3eb]" />;
+  if (loading) return <main className="flex min-h-screen items-center justify-center bg-[#f5f3eb] p-6"><div className="rounded-[28px] border border-[#dfe1d5] bg-[#fffef9] p-7 text-center shadow-sm"><ClipboardCheck className="mx-auto h-7 w-7 animate-pulse text-[#39705d]" /><p className="mt-3 font-[Fraunces] text-2xl font-semibold text-[#173d35]">Loading organizer workspace…</p><p className="mt-2 text-sm text-[#69776e]">Checking your role and game access.</p></div></main>;
   if (!isAuthenticated) return <main className="min-h-screen bg-[#f5f3eb] p-8"><div className="mx-auto max-w-lg rounded-[28px] bg-white p-8 text-center shadow-sm"><UsersRound className="mx-auto h-8 w-8 text-[#2d6a58]" /><h1 className="mt-4 font-[Fraunces] text-3xl font-semibold">Organizer workspace</h1><p className="mt-3 text-sm leading-6 text-[#64736c]">Sign in with an organizer or administrator account to create and manage community games.</p><Button onClick={startLogin} className="mt-6 rounded-full bg-[#19473e]">Sign in</Button></div></main>;
 
   const venue = dashboard.data?.venues[0];
