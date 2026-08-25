@@ -13,6 +13,7 @@ import {
   playerProfiles,
   reports,
   rsvps,
+  savedGames,
   userBlocks,
   users,
   venues,
@@ -238,6 +239,7 @@ export async function getCommunityDashboard(currentUser?: { id: number; name?: s
   let rsvpByGame = new Map<number, "confirmed" | "waitlisted">();
   let memberships = new Set<number>();
   let blockedHostIds = new Set<number>();
+  let savedGameIds: number[] = [];
   let userNotifications: Array<{ id: number; title: string; body: string; type: "game_confirmed" | "waitlist_promoted" | "organizer_update"; readAt: number | null; createdAt: number }> = [];
   let attendanceHistory: Array<{ gameId: number; title: string; status: "attended" | "no_show" | "late_cancel"; recordedAt: number; correctionNote: string | null }> = [];
 
@@ -245,6 +247,7 @@ export async function getCommunityDashboard(currentUser?: { id: number; name?: s
     currentProfile = await getOrCreatePlayerProfile(currentUser.id, currentUser.name);
     const userRsvps = await db.select().from(rsvps).where(eq(rsvps.userId, currentUser.id));
     rsvpByGame = new Map(userRsvps.map(rsvp => [rsvp.gameId, rsvp.state]));
+    savedGameIds = (await db.select({ gameId: savedGames.gameId }).from(savedGames).where(eq(savedGames.userId, currentUser.id))).map(saved => saved.gameId);
     const userMemberships = await db.select({ groupId: groupMemberships.groupId }).from(groupMemberships).where(and(eq(groupMemberships.userId, currentUser.id), eq(groupMemberships.state, "active")));
     memberships = new Set(userMemberships.map(membership => membership.groupId));
     const blocks = await db.select({ blockedUserId: userBlocks.blockedUserId }).from(userBlocks).where(eq(userBlocks.blockerId, currentUser.id));
@@ -285,6 +288,7 @@ export async function getCommunityDashboard(currentUser?: { id: number; name?: s
     groups: groupRows.map(group => ({ ...group, isMember: memberships.has(group.id) })),
     notifications: userNotifications,
     attendanceHistory,
+    savedGameIds,
   };
 }
 
