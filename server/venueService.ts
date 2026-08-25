@@ -13,6 +13,11 @@ export function verificationStateAfterClaimReview(current: "unverified" | "claim
   return current;
 }
 
+export function assertVenueSourceBeforeVerification(source: { id: number } | undefined) {
+  if (!source) throw new Error("Record a trusted venue source before publishing this listing as verified.");
+  return source;
+}
+
 export async function submitVenueClaim(actor: Actor, venueId: number, note?: string) {
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
@@ -86,7 +91,7 @@ export async function setVenueVerificationState(actor: Actor, venueId: number, v
   if (!venue[0]) throw new Error("This venue is unavailable.");
   if (verificationState === "verified") {
     const source = await db.select({ id: venueSources.id }).from(venueSources).where(eq(venueSources.venueId, venueId)).limit(1);
-    if (!source[0]) throw new Error("Record a trusted venue source before publishing this listing as verified.");
+    assertVenueSourceBeforeVerification(source[0]);
   }
   await db.update(venues).set({ verificationState }).where(eq(venues.id, venueId));
   return { updated: true };

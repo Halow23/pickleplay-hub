@@ -21,7 +21,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { confirmedGameDelivery, organizerUpdateDelivery, persistInAppDeliveries, shouldDeliverInApp, waitlistPromotionDelivery } from "./notificationService";
-import { assertReportAvailableForTransition, assertOpenReportTransition, listReportsForReviewer, setReportReviewStatus } from "./moderationService";
+import { assertReportAvailableForTransition, assertOpenReportTransition, listReportsForReviewer, prepareReportAssignment, prepareReportResolution, setReportReviewStatus } from "./moderationService";
 import { applyRsvpAction } from "./rsvpService";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -368,28 +368,27 @@ export async function reviewCommunityReport(role: "user" | "player" | "organizer
 }
 
 export async function assignCommunityReport(actor: { id: number; role: "user" | "player" | "organizer" | "moderator" | "admin" }, reportId: number) {
-  if (actor.role !== "moderator" && actor.role !== "admin") throw new Error("Moderator access is required to assign reports.");
+  const workflow = prepareReportAssignment(actor, reportId);
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
   await db.transaction(async tx => {
     const report = (await tx.select({ id: reports.id, status: reports.status }).from(reports).where(eq(reports.id, reportId)).limit(1).for("update"))[0];
     assertReportAvailableForTransition(report, "assign");
-    await tx.update(reports).set({ assignedTo: actor.id, status: "reviewing" }).where(eq(reports.id, reportId));
-    await tx.insert(auditEvents).values({ actorId: actor.id, eventType: "report_assigned", subjectType: "report", subjectId: reportId, metadata: JSON.stringify({ assignedTo: actor.id }) });
+    await tx.update(reports).set(workflow.update).where(eq(reports.id, reportId));
+    await tx.insert(auditEvents).values(workflow.audit);
   });
   return { updated: true };
 }
 
 export async function resolveCommunityReport(actor: { id: number; role: "user" | "player" | "organizer" | "moderator" | "admin" }, input: { reportId: number; resolutionReason: string; resolutionNote?: string; sanction: "none" | "warning" | "suspension" | "ban" }) {
-  if (actor.role !== "moderator" && actor.role !== "admin") throw new Error("Moderator access is required to resolve reports.");
-  if (input.sanction === "ban" && actor.role !== "admin") throw new Error("Only platform administrators can apply a ban.");
+  const workflow = prepareReportResolution(actor, input);
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
   await db.transaction(async tx => {
     const report = (await tx.select({ id: reports.id, status: reports.status }).from(reports).where(eq(reports.id, input.reportId)).limit(1).for("update"))[0];
     assertReportAvailableForTransition(report, "resolve");
-    await tx.update(reports).set({ status: "closed", assignedTo: actor.id, resolutionReason: input.resolutionReason, resolutionNote: input.resolutionNote || null, sanction: input.sanction, resolvedAt: new Date() }).where(eq(reports.id, input.reportId));
-    await tx.insert(auditEvents).values({ actorId: actor.id, eventType: "report_resolved", subjectType: "report", subjectId: input.reportId, metadata: JSON.stringify({ resolutionReason: input.resolutionReason, sanction: input.sanction }) });
+    await tx.update(reports).set(workflow.update).where(eq(reports.id, input.reportId));
+    await tx.insert(auditEvents).values(workflow.audit);
   });
   return { updated: true };
 }

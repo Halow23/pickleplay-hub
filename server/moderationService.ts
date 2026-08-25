@@ -22,6 +22,20 @@ export function assertReportAvailableForTransition(report: { status: "open" | "r
   assertOpenReportTransition(report.status, action);
 }
 
+export function prepareReportAssignment(actor: { id: number; role: CommunityRole }, reportId: number) {
+  requireReviewAccess(actor.role);
+  return { update: { assignedTo: actor.id, status: "reviewing" as const }, audit: { actorId: actor.id, eventType: "report_assigned", subjectType: "report", subjectId: reportId, metadata: JSON.stringify({ assignedTo: actor.id }) } };
+}
+
+export function prepareReportResolution(actor: { id: number; role: CommunityRole }, input: { reportId: number; resolutionReason: string; resolutionNote?: string; sanction: "none" | "warning" | "suspension" | "ban" }, resolvedAt = new Date()) {
+  requireReviewAccess(actor.role);
+  const resolutionReason = input.resolutionReason.trim();
+  if (resolutionReason.length < 3) throw new Error("A documented resolution reason is required.");
+  if (!canApplyReportSanction(actor.role, input.sanction)) throw new Error(input.sanction === "ban" ? "Only platform administrators can apply a ban." : "Moderator access is required to apply this sanction.");
+  const resolutionNote = input.resolutionNote?.trim() || null;
+  return { update: { status: "closed" as const, assignedTo: actor.id, resolutionReason, resolutionNote, sanction: input.sanction, resolvedAt }, audit: { actorId: actor.id, eventType: "report_resolved", subjectType: "report", subjectId: input.reportId, metadata: JSON.stringify({ resolutionReason, sanction: input.sanction }) } };
+}
+
 export async function listReportsForReviewer<T>(repository: ModerationRepository<T>, role: CommunityRole) {
   requireReviewAccess(role);
   return repository.listReports();

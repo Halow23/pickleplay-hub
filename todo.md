@@ -75,9 +75,9 @@
 - [ ] Run final desktop and mobile verification across community, organizer, admin, and moderator routes.
 - [x] Add privacy-safe city, neighborhood, indoor, and lighting filters to the member venue workspace.
 - [x] Return venue-source provenance with public venue listings and display source labels, links, and verification dates to members.
-- [ ] Require recorded source provenance before an administrator can mark a venue as verified, and expose source creation in the administrator console.
+- [x] Require recorded source provenance before an administrator can mark a venue as verified, and expose source creation in the administrator console.
 - [x] Reject nonexistent or closed report transitions before writing moderation audit events, with service-level coverage.
-- [ ] Add workflow-level moderator tests for assignment, resolution detail persistence, sanction restrictions, and audit-event creation.
+- [x] Add workflow-level moderator tests for assignment, resolution detail persistence, sanction restrictions, and audit-event creation.
 - [ ] Render persisted notification preference switches directly in the authenticated profile view with loading, saving, and error states.
 - [ ] Add inline notification-preference load errors and visible saving feedback to the authenticated profile panel, then verify authenticated mobile and desktop rendering.
 - [x] Show RSVP deadline and closed/cancelled status with a cancellation reason on player game cards, disabling joins with clear messages when RSVP is closed.
