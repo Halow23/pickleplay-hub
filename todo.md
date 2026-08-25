@@ -55,7 +55,7 @@
 - [x] Add player-visible attendance history and correction provenance to profile and organizer workflows.
 - [ ] Enforce RSVP deadlines, guest-count capacity calculations, idempotency keys, capacity-change safeguards, and cancellation reasons.
 - [x] Expose saved games, calendar export, and participant-scoped game-thread controls in player interfaces.
-- [ ] Add persistent notification preferences, outbox entries, delivery records, and a safe in-app dispatcher.
+- [x] Add persistent notification preferences, outbox entries, delivery records, and a safe in-app dispatcher.
 - [x] Add venue corrections, claims, source provenance, verification states, and venue-staff management.
 - [x] Add visible organizer attendance check-in actions and verify persisted roster provenance end to end.
 - [ ] Add participant-scoped game-thread controls and complete saved-game management, including unsave and saved-list state.
@@ -83,4 +83,5 @@
 - [x] Show RSVP deadline and closed/cancelled status with a cancellation reason on player game cards, disabling joins with clear messages when RSVP is closed.
 - [x] Add explicit no-guest messaging to the RSVP interface and verify that no guest input is reachable.
 - [ ] Verify organizer capacity-reduction validation and error messaging end to end, including responsive review of the management screen.
+- [ ] Expose participant communication directly in the organizer workspace and validate the scoped broadcast or game-thread workflow end to end.
 - [x] Search every client RSVP entry point for guest controls and add focused regression coverage proving guests cannot be submitted or edited.
