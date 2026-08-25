@@ -75,7 +75,8 @@ export async function listGroupMembershipRequests(actor: OrganizerActor, groupId
   await getGroupOwnerAccess(actor, groupId);
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
-  return db.select().from(groupMemberships).where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.state, "pending"))).orderBy(asc(groupMemberships.joinedAt));
+  return db.select({ id: groupMemberships.id, userId: groupMemberships.userId, joinedAt: groupMemberships.joinedAt, displayName: playerProfiles.displayName, name: users.name, skillBand: playerProfiles.skillBand })
+    .from(groupMemberships).innerJoin(users, eq(groupMemberships.userId, users.id)).leftJoin(playerProfiles, eq(playerProfiles.userId, users.id)).where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.state, "pending"))).orderBy(asc(groupMemberships.joinedAt));
 }
 
 export async function reviewGroupMembership(actor: OrganizerActor, membershipId: number, decision: "active" | "denied", reason?: string) {
@@ -88,6 +89,22 @@ export async function reviewGroupMembership(actor: OrganizerActor, membershipId:
   await db.update(groupMemberships).set({ state: decision, reviewedBy: actor.id, reviewedAt: new Date(), decisionReason: reason || null }).where(eq(groupMemberships.id, membershipId));
   await audit(actor.id, "group_membership_reviewed", "group_membership", membershipId, { decision });
   return { reviewed: true };
+}
+
+export async function transferGroupOwnership(actor: OrganizerActor, groupId: number, successorUserId: number) {
+  const group = await getGroupOwnerAccess(actor, groupId);
+  if (successorUserId === group.ownerId) throw new Error("This player already owns the group.");
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  const successor = (await db.select().from(groupMemberships).where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, successorUserId), eq(groupMemberships.state, "active"))).limit(1))[0];
+  if (!successor) throw new Error("Ownership can only be transferred to an approved active member.");
+  await db.transaction(async tx => {
+    await tx.update(communityGroups).set({ ownerId: successorUserId, updatedAt: new Date() }).where(eq(communityGroups.id, groupId));
+    await tx.update(groupMemberships).set({ role: "member" }).where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, actor.id)));
+    await tx.update(groupMemberships).set({ role: "owner", reviewedBy: actor.id, reviewedAt: new Date() }).where(eq(groupMemberships.id, successor.id));
+    await tx.insert(auditEvents).values({ actorId: actor.id, eventType: "group_ownership_transferred", subjectType: "group", subjectId: groupId, metadata: JSON.stringify({ successorUserId }) });
+  });
+  return { transferred: true };
 }
 
 export async function recordAttendance(actor: OrganizerActor, rsvpId: number, status: "attended" | "no_show" | "late_cancel", correctionNote?: string) {
