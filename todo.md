@@ -73,7 +73,7 @@
 - [ ] Add moderator queue assignment, resolution reasons, sanctions, and audit-history views.
 - [ ] Add end-to-end role, RSVP, notification, venue, and moderation workflow coverage for the broader release.
 - [ ] Run final desktop and mobile verification across community, organizer, admin, and moderator routes.
-- [ ] Add privacy-safe city, neighborhood, indoor, and lighting filters to the member venue workspace.
+- [x] Add privacy-safe city, neighborhood, indoor, and lighting filters to the member venue workspace.
 - [ ] Return venue-source provenance with public venue listings and display source labels, links, and verification dates to members.
 - [ ] Require recorded source provenance before an administrator can mark a venue as verified, and expose source creation in the administrator console.
 - [ ] Reject nonexistent or closed report transitions before writing moderation audit events, with service-level coverage.
