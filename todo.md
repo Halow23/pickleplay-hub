@@ -20,3 +20,28 @@
 - [x] Add unit coverage for persisted RSVP outcome notifications and moderator-review authorization rules.
 - [x] Add direct procedure-service tests for moderator and admin report review authorization.
 - [x] Refactor the persisted RSVP mutation into a testable transaction service and cover confirmed, waitlisted, and promotion notifications.
+- [x] Add organizer-owned game lifecycle fields, audit events, and role-scoped create, edit, publish, cancel, archive, and roster procedures.
+- [ ] Add private-group applications, owner review, membership state transitions, invitations, group role changes, and ownership-transfer safeguards.
+- [ ] Add attendance records, organizer check-in controls, player-visible attendance history, and correction provenance.
+- [ ] Harden RSVP settings with deadlines, guest counts, cancellation handling, capacity-change safeguards, and idempotent write protection.
+- [ ] Add saved games, invitation links, calendar export, and constrained game-thread foundations while keeping unrestricted direct messaging deferred.
+- [ ] Add persistent notification preferences, a delivery outbox, delivery records, and a safe in-app dispatcher without enabling external email delivery.
+- [ ] Build an organizer workspace for game creation, roster review, attendance, and participant communication.
+- [ ] Build player coordination controls for private-group requests, saved games, calendar export, and notifications.
+- [ ] Add venue correction, claim, verification, source, and staff-role foundations with privacy-preserving search filters.
+- [ ] Build a moderator workspace for queues, report assignment, resolution reasons, sanctions, and audit history.
+- [ ] Document explicit decision gates for social feeds, media, facility reservations, payments, rating providers, and competition operations.
+- [ ] Add Vitest coverage for organizer ownership, group approval, attendance, RSVP hardening, notification preferences, venue claims, and moderation actions.
+- [ ] Run migration review, type checks, unit tests, and desktop/mobile visual verification for the roadmap release.
+- [x] Ensure organizer game creation returns and audits the exact inserted game when the organizer already has existing games.
+- [x] Add regression coverage proving organizer creation selects the newly inserted game rather than an older organizer game.
+- [x] Diagnose why authenticated users cannot create groups or discover other community members.
+- [x] Add role-aware group creation and group-owner member management workflows.
+- [x] Add privacy-aware community member discovery and player profile visibility controls.
+- [x] Provision a secure administrator access path and admin user-management controls.
+- [x] Add access-policy coverage for signed-in group creation, member discovery, and administrator authorization.
+- [x] Build group-owner controls to review pending requests and approve or deny private-group members.
+- [x] Restrict community member discovery to authenticated eligible community users and test signed-out denial.
+- [x] Add route-level Vitest coverage for group creation, member discovery, and administrator procedures.
+- [x] Add route-level signed-in success tests for group creation and member discovery.
+- [x] Add route-level allowed and forbidden tests for administrator bootstrap and role updates.

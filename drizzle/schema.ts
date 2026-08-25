@@ -12,8 +12,11 @@ import {
 
 export const userRoles = ["user", "player", "organizer", "moderator", "admin"] as const;
 export const gameVisibility = ["public", "private"] as const;
+export const gameStatuses = ["draft", "published", "cancelled", "archived"] as const;
 export const rsvpStates = ["confirmed", "waitlisted"] as const;
 export const groupMembershipRoles = ["member", "moderator", "owner"] as const;
+export const groupMembershipStates = ["pending", "active", "denied", "removed"] as const;
+export const attendanceStates = ["attended", "no_show", "late_cancel"] as const;
 export const notificationTypes = ["game_confirmed", "waitlist_promoted", "organizer_update"] as const;
 
 /** Core identity record managed by Manus OAuth. */
@@ -91,6 +94,10 @@ export const groupMemberships = mysqlTable(
     groupId: int("groupId").notNull().references(() => communityGroups.id, { onDelete: "cascade" }),
     userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
     role: mysqlEnum("role", groupMembershipRoles).default("member").notNull(),
+    state: mysqlEnum("state", groupMembershipStates).default("active").notNull(),
+    reviewedBy: int("reviewedBy").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt: timestamp("reviewedAt"),
+    decisionReason: varchar("decisionReason", { length: 240 }),
     joinedAt: timestamp("joinedAt").defaultNow().notNull(),
   },
   table => [
@@ -98,6 +105,17 @@ export const groupMemberships = mysqlTable(
     index("group_memberships_user_idx").on(table.userId),
   ]
 );
+
+export const groupInvites = mysqlTable("group_invites", {
+  id: int("id").autoincrement().primaryKey(),
+  groupId: int("groupId").notNull().references(() => communityGroups.id, { onDelete: "cascade" }),
+  invitedBy: int("invitedBy").notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: varchar("email", { length: 320 }),
+  token: varchar("token", { length: 100 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  acceptedAt: timestamp("acceptedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("group_invites_group_idx").on(table.groupId)]);
 
 export const games = mysqlTable(
   "games",
@@ -112,11 +130,17 @@ export const games = mysqlTable(
     format: varchar("format", { length: 80 }).notNull(),
     skillBand: varchar("skillBand", { length: 80 }).notNull(),
     capacity: int("capacity").notNull(),
+    status: mysqlEnum("status", gameStatuses).default("published").notNull(),
     visibility: mysqlEnum("visibility", gameVisibility).default("public").notNull(),
     beginnerFriendly: boolean("beginnerFriendly").notNull().default(false),
     attendanceNote: varchar("attendanceNote", { length: 240 }).notNull(),
     startsAt: timestamp("startsAt").notNull(),
     endsAt: timestamp("endsAt").notNull(),
+    rsvpDeadlineAt: timestamp("rsvpDeadlineAt"),
+    cancellationReason: varchar("cancellationReason", { length: 300 }),
+    publishedAt: timestamp("publishedAt"),
+    cancelledAt: timestamp("cancelledAt"),
+    updatedBy: int("updatedBy").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
@@ -151,15 +175,44 @@ export const rsvps = mysqlTable(
     gameId: int("gameId").notNull().references(() => games.id, { onDelete: "cascade" }),
     userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
     state: mysqlEnum("state", rsvpStates).notNull(),
+    guestCount: int("guestCount").notNull().default(0),
+    idempotencyKey: varchar("idempotencyKey", { length: 100 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
   table => [
     uniqueIndex("rsvps_game_user_unique").on(table.gameId, table.userId),
+    uniqueIndex("rsvps_idempotency_unique").on(table.idempotencyKey),
     index("rsvps_game_state_idx").on(table.gameId, table.state),
     index("rsvps_user_idx").on(table.userId),
   ]
 );
+
+export const attendanceRecords = mysqlTable("attendance_records", {
+  id: int("id").autoincrement().primaryKey(),
+  rsvpId: int("rsvpId").notNull().references(() => rsvps.id, { onDelete: "cascade" }),
+  status: mysqlEnum("status", attendanceStates).notNull(),
+  recordedBy: int("recordedBy").notNull().references(() => users.id, { onDelete: "restrict" }),
+  checkInAt: timestamp("checkInAt"),
+  correctionNote: varchar("correctionNote", { length: 300 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("attendance_records_rsvp_unique").on(table.rsvpId), index("attendance_records_recorder_idx").on(table.recordedBy)]);
+
+export const savedGames = mysqlTable("saved_games", {
+  id: int("id").autoincrement().primaryKey(),
+  gameId: int("gameId").notNull().references(() => games.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [uniqueIndex("saved_games_game_user_unique").on(table.gameId, table.userId), index("saved_games_user_idx").on(table.userId)]);
+
+export const gameThreads = mysqlTable("game_threads", {
+  id: int("id").autoincrement().primaryKey(),
+  gameId: int("gameId").notNull().references(() => games.id, { onDelete: "cascade" }),
+  authorId: int("authorId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  body: varchar("body", { length: 600 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("game_threads_game_idx").on(table.gameId)]);
 
 export const notifications = mysqlTable(
   "notifications",
@@ -189,6 +242,20 @@ export const userBlocks = mysqlTable(
     uniqueIndex("user_blocks_pair_unique").on(table.blockerId, table.blockedUserId),
     index("user_blocks_blocker_idx").on(table.blockerId),
   ]
+);
+
+export const auditEvents = mysqlTable(
+  "audit_events",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    actorId: int("actorId").references(() => users.id, { onDelete: "set null" }),
+    eventType: varchar("eventType", { length: 100 }).notNull(),
+    subjectType: varchar("subjectType", { length: 80 }).notNull(),
+    subjectId: int("subjectId").notNull(),
+    metadata: text("metadata"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("audit_events_subject_idx").on(table.subjectType, table.subjectId), index("audit_events_actor_idx").on(table.actorId)]
 );
 
 export const reports = mysqlTable(

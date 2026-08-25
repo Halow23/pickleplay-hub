@@ -211,6 +211,7 @@ export async function getCommunityDashboard(currentUser?: { id: number; name?: s
       description: communityGroups.description,
       neighborhood: communityGroups.neighborhood,
       visibility: communityGroups.visibility,
+      ownerId: communityGroups.ownerId,
       ownerName: users.name,
     })
     .from(communityGroups)
@@ -229,7 +230,7 @@ export async function getCommunityDashboard(currentUser?: { id: number; name?: s
     currentProfile = await getOrCreatePlayerProfile(currentUser.id, currentUser.name);
     const userRsvps = await db.select().from(rsvps).where(eq(rsvps.userId, currentUser.id));
     rsvpByGame = new Map(userRsvps.map(rsvp => [rsvp.gameId, rsvp.state]));
-    const userMemberships = await db.select({ groupId: groupMemberships.groupId }).from(groupMemberships).where(eq(groupMemberships.userId, currentUser.id));
+    const userMemberships = await db.select({ groupId: groupMemberships.groupId }).from(groupMemberships).where(and(eq(groupMemberships.userId, currentUser.id), eq(groupMemberships.state, "active")));
     memberships = new Set(userMemberships.map(membership => membership.groupId));
     const blocks = await db.select({ blockedUserId: userBlocks.blockedUserId }).from(userBlocks).where(eq(userBlocks.blockerId, currentUser.id));
     blockedHostIds = new Set(blocks.map(block => block.blockedUserId));
