@@ -14,6 +14,8 @@ The MVP treats self-described skill as a player-controlled matching aid. It may 
 | Local venue and game discovery, group context, organizer-created posts, RSVP capacity, and waitlists | Facility reservations, memberships, access control, and point of sale | Mature facility platforms such as [CourtReserve](https://courtreserve.com/) operate across booking, memberships, billing, access, and reporting; this is a distinct operator product surface. |
 | In-app confirmation, waitlist-promotion, and organizer-update notifications | Payment collection, refunds, taxes, and credits | Financial workflows require a payment provider, reconciliation design, support policies, and compliance work. |
 | Beginner-friendly activity labels, report entry points, community guidelines, and privacy controls | Tournaments, ladders, brackets, sanctioned competition, and official scoring | Rulesets change, formats vary, and official competition may depend on governing-body and provider requirements. [USA Pickleball’s rulebook](https://usapickleball.org/rules/) is updated annually. |
+| Group- and game-scoped coordination, hosted updates, and in-app reporting | Open social feeds, follower graphs, public activity timelines, and short-form media publishing | Expand only after launch-market trust metrics show reliable moderation response times, a documented anti-harassment policy, clear audience/visibility controls, and enough community density to avoid empty or unsafe feeds. |
+| Text-first game and group updates | Photo, video, and user-generated media uploads | Expand only after implementing consent-aware media rights, safety review tooling, abuse escalation, storage retention, accessibility requirements such as captions and alt text, and an operating budget for moderation and storage. |
 
 ## Authorization scopes
 
@@ -55,6 +57,12 @@ Each RSVP is unique for a player and game, and it has one of two active states: 
 | 2. Organizer utility | Reduce the operational work of recurring local play | Recurring activity templates, organizer attendance views, announcements, richer moderation queues, and notification preferences | Financial settlement, club memberships, facility access, and sanctioned competition |
 | 3. Facility collaboration | Connect the player network with venue supply | Availability imports, facility claims, partner integrations, and venue-aware programming | In-house full reservation stack unless a validated supply-side case requires it |
 | 4. Competition and ecosystem | Expand into structured play only with policy and partner clarity | Versioned score records, provider-consented integrations, and organizer competition tooling | A proprietary rating model or any claim of official sanction without governing-body approval |
+
+## Explicit expansion decision gates
+
+Social feeds require evidence that the launch community has sustainable activity, clear audience controls, staffed response expectations for reports, and measurable safety outcomes before a public feed, follower graph, or discoverable activity timeline is enabled. Media uploads require a separate review because they introduce rights management, consent, storage retention, accessibility, and abuse-review obligations; text-only community coordination remains the default until those controls are operational.
+
+Facility reservations, memberships, payment collection, and credits require a validated venue-partner need, a documented operator workflow, and a selected provider or reconciliation model before implementation. Rating-provider synchronization requires user consent, a provider agreement, dispute and correction semantics, and a clear statement that PicklePlay is not calculating an authoritative rating. Competition features require a versioned format and scoring model, organizer responsibility rules, and—where relevant—governing-body or sanctioning approval before any official claims are shown.
 
 ## Safety and privacy principles
 

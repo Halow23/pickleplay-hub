@@ -14,7 +14,7 @@ import {
   updatePlayerProfile,
 } from "./db";
 import { archiveOrganizerGame, cancelOrganizerGame, createOrganizerGame, getOrganizerRoster, listOrganizerGames, publishOrganizerGame, updateOrganizerGame } from "./organizerService";
-import { addGameThreadPost, createCommunityGroup, listCommunityMembers, listGroupMembershipRequests, listVisibleGroupMembers, recordAttendance, removeSavedGameForPlayer, requestGroupMembership, reviewGroupMembership, saveGameForPlayer, transferGroupOwnership } from "./communityService";
+import { acceptGroupInvite, addGameThreadPost, createCommunityGroup, createGroupInvite, listCommunityMembers, listGroupMembershipRequests, listVisibleGroupMembers, recordAttendance, removeSavedGameForPlayer, requestGroupMembership, reviewGroupMembership, saveGameForPlayer, transferGroupOwnership, updateGroupMemberRole } from "./communityService";
 import { bootstrapProjectOwnerAdmin, listAdminUsers, updateUserRole } from "./adminService";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -114,6 +114,7 @@ export const appRouter = router({
     requestGroupMembership: protectedProcedure.input(z.object({ groupId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { try { return await requestGroupMembership(ctx.user.id, input.groupId); } catch (error) { return communityError(error); } }),
     saveGame: protectedProcedure.input(z.object({ gameId: z.number().int().positive(), saved: z.boolean() })).mutation(async ({ ctx, input }) => input.saved ? saveGameForPlayer(ctx.user.id, input.gameId) : removeSavedGameForPlayer(ctx.user.id, input.gameId)),
     postGameThread: protectedProcedure.input(z.object({ gameId: z.number().int().positive(), body: z.string().trim().min(1).max(600) })).mutation(async ({ ctx, input }) => { try { return await addGameThreadPost(ctx.user.id, input.gameId, input.body); } catch (error) { return communityError(error); } }),
+    acceptGroupInvite: protectedProcedure.input(z.object({ token: z.string().trim().min(8).max(100) })).mutation(async ({ ctx, input }) => { try { return await acceptGroupInvite(ctx.user.id, input.token); } catch (error) { return communityError(error); } }),
   }),
   organizer: router({
     games: protectedProcedure.query(async ({ ctx }) => {
@@ -134,6 +135,8 @@ export const appRouter = router({
     membershipRequests: protectedProcedure.input(z.object({ groupId: z.number().int().positive() })).query(async ({ ctx, input }) => { try { return await listGroupMembershipRequests(ctx.user, input.groupId); } catch (error) { return communityError(error); } }),
     reviewMembership: protectedProcedure.input(z.object({ membershipId: z.number().int().positive(), decision: z.enum(["active", "denied"]), reason: z.string().trim().max(240).optional() })).mutation(async ({ ctx, input }) => { try { return await reviewGroupMembership(ctx.user, input.membershipId, input.decision, input.reason); } catch (error) { return communityError(error); } }),
     transferOwnership: protectedProcedure.input(z.object({ groupId: z.number().int().positive(), successorUserId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { try { return await transferGroupOwnership(ctx.user, input.groupId, input.successorUserId); } catch (error) { return communityError(error); } }),
+    updateMemberRole: protectedProcedure.input(z.object({ groupId: z.number().int().positive(), memberUserId: z.number().int().positive(), role: z.enum(["member", "moderator"]) })).mutation(async ({ ctx, input }) => { try { return await updateGroupMemberRole(ctx.user, input.groupId, input.memberUserId, input.role); } catch (error) { return communityError(error); } }),
+    createGroupInvite: protectedProcedure.input(z.object({ groupId: z.number().int().positive(), email: z.string().trim().email().optional() })).mutation(async ({ ctx, input }) => { try { return await createGroupInvite(ctx.user, input.groupId, input.email); } catch (error) { return communityError(error); } }),
     attendance: protectedProcedure.input(z.object({ rsvpId: z.number().int().positive(), status: z.enum(["attended", "no_show", "late_cancel"]), correctionNote: z.string().trim().max(300).optional() })).mutation(async ({ ctx, input }) => { try { return await recordAttendance(ctx.user, input.rsvpId, input.status, input.correctionNote); } catch (error) { return communityError(error); } }),
   }),
   admin: router({

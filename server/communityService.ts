@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { attendanceRecords, auditEvents, communityGroups, gameThreads, games, groupMemberships, playerProfiles, rsvps, savedGames, users } from "../drizzle/schema";
+import { attendanceRecords, auditEvents, communityGroups, gameThreads, games, groupInvites, groupMemberships, playerProfiles, rsvps, savedGames, users } from "../drizzle/schema";
 import { getDb } from "./db";
 import { OrganizerActor } from "./organizerService";
 import { canViewPrivateGroupMembers, membershipStateForVisibility } from "./communityAccess";
@@ -105,6 +105,42 @@ export async function transferGroupOwnership(actor: OrganizerActor, groupId: num
     await tx.insert(auditEvents).values({ actorId: actor.id, eventType: "group_ownership_transferred", subjectType: "group", subjectId: groupId, metadata: JSON.stringify({ successorUserId }) });
   });
   return { transferred: true };
+}
+
+export async function updateGroupMemberRole(actor: OrganizerActor, groupId: number, memberUserId: number, role: "member" | "moderator") {
+  const group = await getGroupOwnerAccess(actor, groupId);
+  if (memberUserId === group.ownerId) throw new Error("Transfer ownership before changing the owner’s group role.");
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  const membership = (await db.select().from(groupMemberships).where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, memberUserId), eq(groupMemberships.state, "active"))).limit(1))[0];
+  if (!membership) throw new Error("Only approved active members can receive a group role.");
+  await db.update(groupMemberships).set({ role, reviewedBy: actor.id, reviewedAt: new Date() }).where(eq(groupMemberships.id, membership.id));
+  await audit(actor.id, "group_member_role_updated", "group_membership", membership.id, { role });
+  return { updated: true };
+}
+
+export async function createGroupInvite(actor: OrganizerActor, groupId: number, email?: string) {
+  await getGroupOwnerAccess(actor, groupId);
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  const token = `pp_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  await db.insert(groupInvites).values({ groupId, invitedBy: actor.id, email: email || null, token, expiresAt });
+  await audit(actor.id, "group_invite_created", "group", groupId, { expiresAt: expiresAt.toISOString() });
+  return { token, expiresAt: expiresAt.getTime() };
+}
+
+export async function acceptGroupInvite(userId: number, token: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  const invite = (await db.select().from(groupInvites).where(eq(groupInvites.token, token)).limit(1))[0];
+  if (!invite || invite.acceptedAt || invite.expiresAt < new Date()) throw new Error("This group invitation is invalid or has expired.");
+  await db.transaction(async tx => {
+    await tx.insert(groupMemberships).values({ groupId: invite.groupId, userId, role: "member", state: "active", reviewedBy: invite.invitedBy, reviewedAt: new Date() }).onDuplicateKeyUpdate({ set: { state: "active", reviewedBy: invite.invitedBy, reviewedAt: new Date() } });
+    await tx.update(groupInvites).set({ acceptedAt: new Date() }).where(eq(groupInvites.id, invite.id));
+  });
+  await audit(userId, "group_invite_accepted", "group", invite.groupId, {});
+  return { joined: true, groupId: invite.groupId };
 }
 
 export async function recordAttendance(actor: OrganizerActor, rsvpId: number, status: "attended" | "no_show" | "late_cancel", correctionNote?: string) {

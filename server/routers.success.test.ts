@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "./_core/context";
 
-const communityMocks = vi.hoisted(() => ({ createGroup: vi.fn(), members: vi.fn() }));
+const communityMocks = vi.hoisted(() => ({ createGroup: vi.fn(), members: vi.fn(), createInvite: vi.fn(), acceptInvite: vi.fn(), updateRole: vi.fn(), transferOwnership: vi.fn() }));
 vi.mock("./communityService", () => ({
+  acceptGroupInvite: communityMocks.acceptInvite,
   addGameThreadPost: vi.fn(),
   createCommunityGroup: communityMocks.createGroup,
+  createGroupInvite: communityMocks.createInvite,
   listCommunityMembers: communityMocks.members,
   listGroupMembershipRequests: vi.fn(),
   listVisibleGroupMembers: vi.fn(),
@@ -13,6 +15,8 @@ vi.mock("./communityService", () => ({
   requestGroupMembership: vi.fn(),
   reviewGroupMembership: vi.fn(),
   saveGameForPlayer: vi.fn(),
+  transferGroupOwnership: communityMocks.transferOwnership,
+  updateGroupMemberRole: communityMocks.updateRole,
 }));
 vi.mock("./adminService", () => ({
   bootstrapProjectOwnerAdmin: vi.fn(async (actor: { openId: string }) => {
@@ -54,5 +58,29 @@ describe("signed-in route behavior", () => {
   it("permits administrator role updates and rejects a player attempt", async () => {
     await expect(appRouter.createCaller(context("admin")).admin.updateUserRole({ userId: 9, role: "organizer" })).resolves.toEqual({ updated: true });
     await expect(appRouter.createCaller(context("player")).admin.updateUserRole({ userId: 9, role: "organizer" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("routes signed-in private-group invitation and member-management actions", async () => {
+    communityMocks.createInvite.mockResolvedValue({ token: "pp_invite", expiresAt: Date.now() + 1000 });
+    communityMocks.acceptInvite.mockResolvedValue({ joined: true, groupId: 4 });
+    communityMocks.updateRole.mockResolvedValue({ updated: true });
+    communityMocks.transferOwnership.mockResolvedValue({ transferred: true });
+    const caller = appRouter.createCaller(context("player"));
+    await expect(caller.organizer.createGroupInvite({ groupId: 4 })).resolves.toMatchObject({ token: "pp_invite" });
+    await expect(caller.community.acceptGroupInvite({ token: "pp_invite" })).resolves.toEqual({ joined: true, groupId: 4 });
+    await expect(caller.organizer.updateMemberRole({ groupId: 4, memberUserId: 9, role: "moderator" })).resolves.toEqual({ updated: true });
+    await expect(caller.organizer.transferOwnership({ groupId: 4, successorUserId: 9 })).resolves.toEqual({ transferred: true });
+  });
+
+  it("surfaces invalid invite and forbidden private-group management failures", async () => {
+    communityMocks.createInvite.mockRejectedValue(new Error("Only the group owner or platform admin can manage membership."));
+    communityMocks.acceptInvite.mockRejectedValue(new Error("This group invitation is invalid or has expired."));
+    communityMocks.updateRole.mockRejectedValue(new Error("Only approved active members can receive a group role."));
+    communityMocks.transferOwnership.mockRejectedValue(new Error("Ownership can only be transferred to an approved active member."));
+    const caller = appRouter.createCaller(context("player"));
+    await expect(caller.organizer.createGroupInvite({ groupId: 4 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.community.acceptGroupInvite({ token: "invalid-token" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.organizer.updateMemberRole({ groupId: 4, memberUserId: 9, role: "moderator" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.organizer.transferOwnership({ groupId: 4, successorUserId: 9 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });
