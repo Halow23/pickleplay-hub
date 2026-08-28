@@ -356,7 +356,7 @@ export default function Home() {
             <div className="hidden sm:block">
               {loading ? <div className="h-10 w-24 animate-pulse rounded-full bg-[#e4e5dc]" /> : isAuthenticated ? (
                 <button onClick={() => setActiveView("profile")} className="flex items-center gap-2 rounded-full border border-[#dde0d5] bg-white/75 py-1 pl-1 pr-3 text-sm font-bold transition hover:bg-white"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e4b54a] text-[11px] text-[#173d35]">{getInitials(user?.name)}</span><span className="max-w-[100px] truncate">{user?.name?.split(" ")[0] || "Profile"}</span></button>
-              ) : <Button onClick={askForSignIn} className="rounded-full bg-[#19473e] px-5 font-bold text-white hover:bg-[#123b33]">Join PicklePlay</Button>}
+              ) : <Button onClick={askForSignIn} className="rounded-full bg-[#19473e] px-5 font-bold text-white hover:bg-[#123b33]">Join</Button>}
             </div>
             <button onClick={() => setMobileMenuOpen(value => !value)} className="flex h-10 w-10 items-center justify-center rounded-full border border-[#dde0d5] bg-white/80 md:hidden" aria-label="Open navigation"><Menu className="h-5 w-5" /></button>
           </div>
