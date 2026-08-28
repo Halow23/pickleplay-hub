@@ -5,6 +5,14 @@ export type ModerationRepository<T> = {
   setReportStatus: (reportId: number, status: "reviewing" | "closed") => Promise<void>;
 };
 
+export type ReportStatusRow = { status: "open" | "reviewing" | "closed" };
+
+export type StatusTransitionRepository = {
+  findReport: (reportId: number) => Promise<ReportStatusRow | undefined>;
+  setReportStatus: (reportId: number, status: "reviewing" | "closed") => Promise<void>;
+  writeAudit: (audit: { actorId: number; eventType: string; subjectType: string; subjectId: number; metadata: string }) => Promise<void>;
+};
+
 function requireReviewAccess(role: CommunityRole) {
   if (!canReviewCommunityReports(role)) throw new Error("Moderator access is required to review reports.");
 }
@@ -41,8 +49,27 @@ export async function listReportsForReviewer<T>(repository: ModerationRepository
   return repository.listReports();
 }
 
-export async function setReportReviewStatus<T>(repository: ModerationRepository<T>, role: CommunityRole, reportId: number, status: "reviewing" | "closed") {
-  requireReviewAccess(role);
+// Direct status changes (used by the legacy "review" console action) must not
+// bypass the state machine: closed reports stay closed, and every transition
+// is audited just like assign/resolve.
+export async function setReportReviewStatus(
+  repository: StatusTransitionRepository,
+  actor: { id: number; role: CommunityRole },
+  reportId: number,
+  status: "reviewing" | "closed"
+) {
+  requireReviewAccess(actor.role);
+  const report = await repository.findReport(reportId);
+  if (!report) throw new Error("This report is no longer available.");
+  if (report.status === "closed") throw new Error("This report has already been resolved.");
+  if (status === "reviewing" && report.status === "reviewing") return { updated: false };
   await repository.setReportStatus(reportId, status);
+  await repository.writeAudit({
+    actorId: actor.id,
+    eventType: "report_status_changed",
+    subjectType: "report",
+    subjectId: reportId,
+    metadata: JSON.stringify({ from: report.status, to: status }),
+  });
   return { updated: true };
 }

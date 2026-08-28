@@ -1,9 +1,17 @@
 import { decideRsvpState } from "./communityPolicy";
 import { confirmedGameDelivery, InAppDelivery, waitlistPromotionDelivery } from "./notificationService";
+import { RSVP_CUTOFF_MS } from "../shared/const";
 
 export type RsvpState = "confirmed" | "waitlisted";
 
 export type StoredRsvp = { id: number; userId: number; state: RsvpState; idempotencyKey?: string | null };
+
+export class IdempotencyConflictError extends Error {
+  constructor() {
+    super("This RSVP request key has already been used.");
+    this.name = "IdempotencyConflictError";
+  }
+}
 
 export type RsvpTransaction = {
   findExisting: (userId: number) => Promise<StoredRsvp | undefined>;
@@ -31,13 +39,26 @@ export async function applyRsvpAction(
   const existing = await transaction.findExisting(input.userId);
 
   if (input.action === "join") {
-    const cutoff = input.rsvpDeadlineAt ?? (input.startsAt ? input.startsAt - 2 * 60 * 60 * 1000 : undefined);
+    const cutoff = input.rsvpDeadlineAt ?? (input.startsAt ? input.startsAt - RSVP_CUTOFF_MS : undefined);
     if (cutoff !== undefined && (input.now ?? Date.now()) >= cutoff) {
       throw new Error("RSVPs close two hours before the game begins.");
     }
     if (existing) return { state: existing.state, changed: false, promotedUserId: null };
     const state = decideRsvpState(input.capacity, await transaction.countConfirmed());
-    await transaction.create(input.userId, state, input.idempotencyKey);
+    try {
+      await transaction.create(input.userId, state, input.idempotencyKey);
+    } catch (error) {
+      // Two concurrent joins with the same idempotency key can both pass the
+      // replay lookup before either inserts; the loser hits the unique index
+      // and should behave as the replay it is, not surface a raw DB error.
+      if (input.idempotencyKey && error instanceof IdempotencyConflictError) {
+        const replay = transaction.findByIdempotencyKey
+          ? await transaction.findByIdempotencyKey(input.idempotencyKey)
+          : undefined;
+        if (replay) return { state: replay.state, changed: false, promotedUserId: null };
+      }
+      throw error;
+    }
     await transaction.notify(confirmedGameDelivery(input.userId, input.gameId, input.gameTitle, state));
     return { state, changed: true, promotedUserId: null };
   }

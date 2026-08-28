@@ -10,7 +10,15 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useRoute } from "wouter";
 
-const asLocalInput = (value: Date | string | number | null | undefined) => value ? new Date(value).toISOString().slice(0, 16) : "";
+// Format a timestamp for a `datetime-local` input in the browser's local time.
+// toISOString() must not be used here: it yields UTC, while the input expects
+// local time — mixing the two shifts the value by the UTC offset on every save.
+const asLocalInput = (value: Date | string | number | null | undefined) => {
+  if (!value) return "";
+  const date = new Date(value);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 
 export default function OrganizerGameSettings() {
   const { isAuthenticated } = useAuth();

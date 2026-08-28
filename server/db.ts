@@ -22,7 +22,11 @@ import {
 import { ENV } from "./_core/env";
 import { confirmedGameDelivery, organizerUpdateDelivery, persistInAppDeliveries, shouldDeliverInApp, waitlistPromotionDelivery } from "./notificationService";
 import { assertReportAvailableForTransition, assertOpenReportTransition, listReportsForReviewer, prepareReportAssignment, prepareReportResolution, setReportReviewStatus } from "./moderationService";
-import { applyRsvpAction } from "./rsvpService";
+import { applyRsvpAction, IdempotencyConflictError } from "./rsvpService";
+
+function isDuplicateKeyError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "ER_DUP_ENTRY";
+}
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -159,7 +163,12 @@ export async function getOrCreatePlayerProfile(userId: number, accountName?: str
   if (!db) return undefined;
   const existing = await db.select().from(playerProfiles).where(eq(playerProfiles.userId, userId)).limit(1);
   if (existing[0]) return existing[0];
-  await db.insert(playerProfiles).values({ userId, displayName: accountName?.trim() || "New PicklePlayer" });
+  // Upsert rather than plain insert: two concurrent first requests would
+  // otherwise both insert and the loser would fail the unique constraint.
+  await db
+    .insert(playerProfiles)
+    .values({ userId, displayName: accountName?.trim() || "New PicklePlayer" })
+    .onDuplicateKeyUpdate({ set: { userId } });
   const created = await db.select().from(playerProfiles).where(eq(playerProfiles.userId, userId)).limit(1);
   return created[0];
 }
@@ -310,7 +319,16 @@ export async function respondToGame(userId: number, gameId: number, action: "joi
       findExisting: async requestedUserId => (await tx.select().from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.userId, requestedUserId))).limit(1))[0],
       findByIdempotencyKey: async requestKey => (await tx.select().from(rsvps).where(eq(rsvps.idempotencyKey, requestKey)).limit(1))[0],
       countConfirmed: async () => Number((await tx.select({ total: count(rsvps.id) }).from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.state, "confirmed"))))[0]?.total ?? 0),
-      create: async (requestedUserId, state, requestKey) => { await tx.insert(rsvps).values({ gameId, userId: requestedUserId, state, guestCount: 0, idempotencyKey: requestKey || null }); },
+      create: async (requestedUserId, state, requestKey) => {
+        try {
+          await tx.insert(rsvps).values({ gameId, userId: requestedUserId, state, guestCount: 0, idempotencyKey: requestKey || null });
+        } catch (error) {
+          // ER_DUP_ENTRY (1062) on the idempotency unique index means a
+          // concurrent request with the same key already inserted.
+          if (requestKey && isDuplicateKeyError(error)) throw new IdempotencyConflictError();
+          throw error;
+        }
+      },
       remove: async rsvpId => { await tx.delete(rsvps).where(eq(rsvps.id, rsvpId)); },
       findEarliestWaitlisted: async () => (await tx.select().from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.state, "waitlisted"))).orderBy(asc(rsvps.createdAt), asc(rsvps.id)).limit(1).for("update"))[0],
       promote: async rsvpId => { await tx.update(rsvps).set({ state: "confirmed", updatedAt: new Date() }).where(eq(rsvps.id, rsvpId)); },
@@ -361,10 +379,14 @@ export async function getModerationReports(role: "user" | "player" | "organizer"
   return listReportsForReviewer({ listReports: () => db.select().from(reports).orderBy(desc(reports.createdAt)).limit(50), setReportStatus: async () => undefined }, role);
 }
 
-export async function reviewCommunityReport(role: "user" | "player" | "organizer" | "moderator" | "admin", reportId: number, status: "reviewing" | "closed") {
+export async function reviewCommunityReport(actor: { id: number; role: "user" | "player" | "organizer" | "moderator" | "admin" }, reportId: number, status: "reviewing" | "closed") {
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
-  return setReportReviewStatus({ listReports: async () => [], setReportStatus: async (targetId, targetStatus) => { await db.update(reports).set({ status: targetStatus }).where(eq(reports.id, targetId)); } }, role, reportId, status);
+  return db.transaction(async tx => setReportReviewStatus({
+    findReport: async targetId => (await tx.select({ status: reports.status }).from(reports).where(eq(reports.id, targetId)).limit(1).for("update"))[0],
+    setReportStatus: async (targetId, targetStatus) => { await tx.update(reports).set({ status: targetStatus }).where(eq(reports.id, targetId)); },
+    writeAudit: async audit => { await tx.insert(auditEvents).values(audit); },
+  }, actor, reportId, status));
 }
 
 export async function assignCommunityReport(actor: { id: number; role: "user" | "player" | "organizer" | "moderator" | "admin" }, reportId: number) {

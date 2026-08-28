@@ -101,7 +101,7 @@ export const appRouter = router({
       .input(z.object({ reportId: z.number().int().positive(), status: z.enum(["reviewing", "closed"]) }))
       .mutation(async ({ ctx, input }) => {
         try {
-          return await reviewCommunityReport(ctx.user.role, input.reportId, input.status);
+          return await reviewCommunityReport(ctx.user, input.reportId, input.status);
         } catch (error) {
           return communityError(error);
         }

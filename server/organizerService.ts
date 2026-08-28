@@ -3,6 +3,7 @@ import { attendanceRecords, auditEvents, communityGroups, games, notifications, 
 import { getDb } from "./db";
 import { organizerUpdateDelivery, persistInAppDeliveries } from "./notificationService";
 import { assertOrganizerGameAccess, assertSafeCapacityChange, canCreateOrganizerGame } from "./organizerPolicy";
+import { RSVP_CUTOFF_MS } from "../shared/const";
 
 export type OrganizerActor = { id: number; role: "user" | "player" | "organizer" | "moderator" | "admin" };
 
@@ -34,7 +35,7 @@ export function selectCreatedOrganizerGame<T extends { slug: string }>(rows: rea
 }
 
 export function resolveRsvpDeadline(startsAt: Date, requestedDeadline?: Date | null) {
-  const deadline = requestedDeadline || new Date(startsAt.getTime() - 2 * 60 * 60 * 1000);
+  const deadline = requestedDeadline || new Date(startsAt.getTime() - RSVP_CUTOFF_MS);
   if (deadline.getTime() >= startsAt.getTime()) throw new Error("The RSVP deadline must be before the game begins.");
   return deadline;
 }
@@ -102,10 +103,15 @@ export async function updateOrganizerGame(actor: OrganizerActor, gameId: number,
   await ensureOrganizerCanUseGroup(actor, input.groupId);
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
-  const confirmed = Number((await db.select({ total: count(rsvps.id) }).from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.state, "confirmed"))))[0]?.total ?? 0);
-  assertSafeCapacityChange(game.capacity, input.capacity, confirmed);
   const rsvpDeadlineAt = resolveRsvpDeadline(input.startsAt, input.rsvpDeadlineAt);
-  await db.update(games).set({ ...input, rsvpDeadlineAt, groupId: input.groupId || null, updatedBy: actor.id, updatedAt: new Date() }).where(eq(games.id, gameId));
+  // Count and update inside one transaction on a locked game row so a RSVP
+  // landing between the capacity check and the update cannot overshoot.
+  await db.transaction(async tx => {
+    await tx.select({ id: games.id }).from(games).where(eq(games.id, gameId)).limit(1).for("update");
+    const confirmed = Number((await tx.select({ total: count(rsvps.id) }).from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.state, "confirmed"))))[0]?.total ?? 0);
+    assertSafeCapacityChange(game.capacity, input.capacity, confirmed);
+    await tx.update(games).set({ ...input, rsvpDeadlineAt, groupId: input.groupId || null, updatedBy: actor.id, updatedAt: new Date() }).where(eq(games.id, gameId));
+  });
   await writeAudit(actor.id, "game_updated", "game", gameId, { capacity: input.capacity, startsAt: input.startsAt.toISOString() });
   return { updated: true };
 }

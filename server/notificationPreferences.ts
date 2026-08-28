@@ -21,7 +21,12 @@ export async function getNotificationPreferences(userId: number) {
   if (!db) throw new Error("Community data is temporarily unavailable.");
   const existing = await db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, userId)).limit(1);
   if (existing[0]) return existing[0];
-  await db.insert(notificationPreferences).values({ userId, ...defaults });
+  // Upsert rather than plain insert: two concurrent first requests would
+  // otherwise both insert and the loser would fail the unique constraint.
+  await db
+    .insert(notificationPreferences)
+    .values({ userId, ...defaults })
+    .onDuplicateKeyUpdate({ set: { userId } });
   return (await db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, userId)).limit(1))[0]!;
 }
 

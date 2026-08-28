@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { attendanceRecords, auditEvents, communityGroups, gameThreads, games, groupInvites, groupMemberships, playerProfiles, rsvps, savedGames, users } from "../drizzle/schema";
 import { getDb } from "./db";
 import { OrganizerActor } from "./organizerService";
@@ -123,7 +124,9 @@ export async function createGroupInvite(actor: OrganizerActor, groupId: number, 
   await getGroupOwnerAccess(actor, groupId);
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
-  const token = `pp_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  // nanoid gives ~126 bits of entropy; the previous Math.random() + timestamp
+  // scheme was guessable enough to brute-force invitation URLs.
+  const token = `pp_${nanoid(21)}`;
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await db.insert(groupInvites).values({ groupId, invitedBy: actor.id, email: email || null, token, expiresAt });
   await audit(actor.id, "group_invite_created", "group", groupId, { expiresAt: expiresAt.toISOString() });

@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { startLogin } from "@/const";
+import { RSVP_CUTOFF_MS } from "@shared/const";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -106,12 +107,12 @@ function CapacityMeter({ confirmed, capacity }: { confirmed: number; capacity: n
 
 function GameRsvpStatus({ status, startsAt, rsvpDeadlineAt, cancellationReason }: { status: "draft" | "published" | "cancelled" | "archived"; startsAt: number; rsvpDeadlineAt: number | null; cancellationReason: string | null }) {
   if (status === "cancelled") return <p className="mt-3 rounded-xl bg-[#fff0e9] px-3 py-2 text-xs leading-5 text-[#98513d]"><strong>Cancelled.</strong>{cancellationReason ? ` ${cancellationReason}` : " The organizer has cancelled this session."}</p>;
-  const deadline = rsvpDeadlineAt ?? startsAt - 2 * 60 * 60 * 1000;
+  const deadline = rsvpDeadlineAt ?? startsAt - RSVP_CUTOFF_MS;
   return <p className={`mt-3 text-xs leading-5 ${Date.now() >= deadline ? "text-[#98513d]" : "text-[#62756a]"}`}><strong>{Date.now() >= deadline ? "RSVP closed" : "RSVP closes"}</strong> {new Date(deadline).toLocaleString()}.</p>;
 }
 
 function GameJoinAction({ game, isAuthenticated, isPending, onAction }: { game: { id: number; status: "draft" | "published" | "cancelled" | "archived"; startsAt: number; rsvpDeadlineAt: number | null; userRsvpState: "confirmed" | "waitlisted" | null; canAccess: boolean }; isAuthenticated: boolean; isPending: boolean; onAction: (gameId: number, state: "confirmed" | "waitlisted" | null) => void }) {
-  const deadline = game.rsvpDeadlineAt ?? game.startsAt - 2 * 60 * 60 * 1000;
+  const deadline = game.rsvpDeadlineAt ?? game.startsAt - RSVP_CUTOFF_MS;
   const joinClosed = game.userRsvpState === null && (game.status === "cancelled" || game.status === "archived" || Date.now() >= deadline);
   const disabled = isPending || !game.canAccess || joinClosed;
   const text = game.userRsvpState === "confirmed" ? <><Check className="h-4 w-4" /> Confirmed · Leave</> : game.userRsvpState === "waitlisted" ? <><CalendarDays className="h-4 w-4" /> Waitlisted · Leave</> : !game.canAccess ? <><LockKeyhole className="h-4 w-4" /> Approval needed</> : joinClosed ? <><CalendarDays className="h-4 w-4" /> RSVP closed</> : <><Plus className="h-4 w-4" /> Join game</>;
@@ -281,7 +282,7 @@ export default function Home() {
     const game = dashboard?.games.find(item => item.id === gameId);
     if (!currentState && game) {
       if (game.status === "cancelled") return toast.message(game.cancellationReason ? `This game was cancelled: ${game.cancellationReason}` : "This game has been cancelled by its organizer.");
-      const deadline = game.rsvpDeadlineAt ?? game.startsAt - 2 * 60 * 60 * 1000;
+      const deadline = game.rsvpDeadlineAt ?? game.startsAt - RSVP_CUTOFF_MS;
       if (Date.now() >= deadline) return toast.message(`RSVP closed ${new Date(deadline).toLocaleString()}.`);
     }
     rsvpMutation.mutate({ gameId, action: currentState ? "leave" : "join", idempotencyKey: crypto.randomUUID() });

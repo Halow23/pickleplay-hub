@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRsvpAction, StoredRsvp } from "./rsvpService";
+import { applyRsvpAction, IdempotencyConflictError, StoredRsvp } from "./rsvpService";
 
 function createTransaction(initial: StoredRsvp[], capacity: number) {
   const rsvps = [...initial];
@@ -69,5 +69,27 @@ describe("persisted RSVP transaction behavior", () => {
     await expect(applyRsvpAction(state.transaction, { userId: 10, gameId: 20, gameTitle: "Open play", capacity: state.capacity, action: "leave" })).resolves.toMatchObject({ promotedUserId: 11, changed: true });
     expect(state.rsvps).toEqual([{ id: 2, userId: 11, state: "confirmed" }]);
     expect(state.notifications).toMatchObject([{ userId: 11, type: "waitlist_promoted", title: "A place just opened" }]);
+  });
+
+  it("treats a duplicate-key insert as an idempotent replay instead of surfacing a raw database error", async () => {
+    const state = createTransaction([], 2);
+    // Simulate a concurrent request winning the insert: our create throws the
+    // conflict error, but the row is already persisted under the same key.
+    const originalCreate = state.transaction.create;
+    state.transaction.create = async (userId, rsvpState, idempotencyKey) => {
+      state.rsvps.push({ id: 99, userId, state: rsvpState, idempotencyKey });
+      throw new IdempotencyConflictError();
+    };
+    void originalCreate;
+    await expect(applyRsvpAction(state.transaction, { userId: 11, gameId: 20, gameTitle: "Open play", capacity: state.capacity, action: "join", idempotencyKey: "join-request-raced" })).resolves.toMatchObject({ state: "confirmed", changed: false });
+    expect(state.notifications).toEqual([]);
+  });
+
+  it("propagates unrelated insert failures instead of masking them as replays", async () => {
+    const state = createTransaction([], 2);
+    state.transaction.create = async () => {
+      throw new Error("database unavailable");
+    };
+    await expect(applyRsvpAction(state.transaction, { userId: 11, gameId: 20, gameTitle: "Open play", capacity: state.capacity, action: "join", idempotencyKey: "join-request-other" })).rejects.toThrow("database unavailable");
   });
 });
