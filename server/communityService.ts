@@ -192,5 +192,6 @@ export async function listGameThreadPosts(userId: number, gameId: number) {
     .from(gameThreads)
     .leftJoin(playerProfiles, eq(gameThreads.authorId, playerProfiles.userId))
     .where(eq(gameThreads.gameId, gameId))
-    .orderBy(asc(gameThreads.createdAt), asc(gameThreads.id));
+    .orderBy(asc(gameThreads.createdAt), asc(gameThreads.id))
+    .limit(100);
 }

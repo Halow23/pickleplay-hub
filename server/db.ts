@@ -212,7 +212,8 @@ export async function getCommunityDashboard(currentUser?: { id: number; name?: s
     .leftJoin(communityGroups, eq(games.groupId, communityGroups.id))
     .leftJoin(gamePosts, eq(gamePosts.gameId, games.id))
     .where(gte(games.endsAt, now))
-    .orderBy(asc(games.startsAt));
+    .orderBy(asc(games.startsAt))
+    .limit(60);
 
   const confirmedCounts = await db
     .select({ gameId: rsvps.gameId, total: count(rsvps.id) })
