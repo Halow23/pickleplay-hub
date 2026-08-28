@@ -2,9 +2,10 @@
 
 - [x] Open the attached PicklePlay project from its canonical webdev project reference.
 - [x] Confirm the managed development server is running and exposes the current project preview URL.
-- [ ] Open the current PicklePlay preview in the user’s connected browser.
-- [ ] Confirm the browser is displaying the PicklePlay project preview.
-- [ ] Deliver the browser-accessible preview link and project version to the user.
+- [x] Open the current PicklePlay preview in the user’s connected browser.
+- [x] Confirm the browser is displaying the PicklePlay project preview.
+- [x] Deliver the browser-accessible preview link and project version to the user.
+- [x] Sync the project with the latest changes from GitHub.
 
 ## Scope note
 
