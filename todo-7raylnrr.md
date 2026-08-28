@@ -23,3 +23,5 @@ This session is limited to opening the existing project preview in the user’s 
 - The page renders without a browser navigation error.
 - The final response includes the preview URL and the current project version attachment.
 
+- [x] Restore the synced dev server after it reports a missing `helmet` package at startup.
+- [x] Re-run project checks and verify the preview loads after the runtime repair.
