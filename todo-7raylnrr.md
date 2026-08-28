@@ -34,5 +34,5 @@ This session is limited to opening the existing project preview in the user’s 
 - [x] Remove mock records and mock-dependent presentation without fabricating replacements.
 - [x] Add truthful empty states for areas with no real data.
 - [x] Add or update Vitest coverage for the cleanup and empty states.
-- [ ] Verify the cleaned site and save a checkpoint.
-- [ ] Save a new checkpoint containing the verified mock-data cleanup and empty-state changes.
+- [x] Verify the cleaned site and save a checkpoint.
+- [x] Save a new checkpoint containing the verified mock-data cleanup and empty-state changes.
