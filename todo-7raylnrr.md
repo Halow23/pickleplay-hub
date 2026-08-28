@@ -30,3 +30,9 @@ This session is limited to opening the existing project preview in the user’s 
 - [x] Add or update Vitest coverage for the repaired callback behavior.
 - [x] Verify the login flow and save a checkpoint for the fix.
 - [x] Update the active-account status test so it asserts successful access when the database is available.
+- [x] Audit frontend, backend, and database for placeholder or seeded mock content.
+- [x] Remove mock records and mock-dependent presentation without fabricating replacements.
+- [x] Add truthful empty states for areas with no real data.
+- [x] Add or update Vitest coverage for the cleanup and empty states.
+- [ ] Verify the cleaned site and save a checkpoint.
+- [ ] Save a new checkpoint containing the verified mock-data cleanup and empty-state changes.

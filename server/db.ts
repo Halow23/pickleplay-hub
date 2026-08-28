@@ -74,90 +74,6 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
-function dateInDays(daysFromNow: number, hour: number, durationHours: number) {
-  const startsAt = new Date();
-  startsAt.setMinutes(0, 0, 0);
-  startsAt.setHours(hour, 0, 0, 0);
-  startsAt.setDate(startsAt.getDate() + daysFromNow);
-  const endsAt = new Date(startsAt);
-  endsAt.setHours(endsAt.getHours() + durationHours);
-  return { startsAt, endsAt };
-}
-
-async function ensureCommunitySeedData() {
-  const db = await getDb();
-  if (!db) return;
-  const existingVenue = await db.select({ id: venues.id }).from(venues).limit(1);
-  if (existingVenue.length) return;
-
-  await db.transaction(async tx => {
-    const alreadySeeded = await tx.select({ id: venues.id }).from(venues).limit(1);
-    if (alreadySeeded.length) return;
-
-    await tx.insert(users).values([
-      { openId: "pickleplay-community-harbor", name: "Harbor Community Hosts", loginMethod: "system", role: "organizer" },
-      { openId: "pickleplay-community-willow", name: "Willow Park Organizers", loginMethod: "system", role: "organizer" },
-    ]);
-    const organizers = await tx.select().from(users).where(inArray(users.openId, ["pickleplay-community-harbor", "pickleplay-community-willow"]));
-    const harborHost = organizers.find(account => account.openId === "pickleplay-community-harbor");
-    const willowHost = organizers.find(account => account.openId === "pickleplay-community-willow");
-    if (!harborHost || !willowHost) throw new Error("Could not establish community organizers.");
-
-    await tx.insert(playerProfiles).values([
-      { userId: harborHost.id, displayName: "Harbor Community Hosts", city: "Your local area", skillBand: "Community host", ratingProvenance: "none", visibility: "community", preferredFormats: "Open play, doubles" },
-      { userId: willowHost.id, displayName: "Willow Park Organizers", city: "Your local area", skillBand: "Community host", ratingProvenance: "none", visibility: "community", preferredFormats: "Beginner play, doubles" },
-    ]);
-
-    await tx.insert(venues).values([
-      { slug: "willow-park-courts", name: "Willow Park Courts", neighborhood: "Riverside", city: "Your local area", addressLabel: "Riverside recreation area", courtCount: 6, indoor: false, lighting: true, visibility: "public", accessibilityNote: "Step-free route from the main entrance." },
-      { slug: "harbor-pavilion", name: "Harbor Pavilion", neighborhood: "Old Town", city: "Your local area", addressLabel: "Old Town community pavilion", courtCount: 4, indoor: true, lighting: true, visibility: "public", accessibilityNote: "Indoor courts with seating nearby." },
-      { slug: "cedar-green", name: "Cedar Green Courts", neighborhood: "Northside", city: "Your local area", addressLabel: "Northside greenway courts", courtCount: 3, indoor: false, lighting: false, visibility: "private", accessibilityNote: "Access shared with approved community members." },
-    ]);
-    const seededVenues = await tx.select().from(venues).where(inArray(venues.slug, ["willow-park-courts", "harbor-pavilion", "cedar-green"]));
-    const willowVenue = seededVenues.find(venue => venue.slug === "willow-park-courts");
-    const harborVenue = seededVenues.find(venue => venue.slug === "harbor-pavilion");
-    const cedarVenue = seededVenues.find(venue => venue.slug === "cedar-green");
-    if (!willowVenue || !harborVenue || !cedarVenue) throw new Error("Could not establish community venues.");
-
-    await tx.insert(communityGroups).values([
-      { slug: "riverside-rally", ownerId: willowHost.id, name: "Riverside Rally", description: "A welcoming local group for open play, doubles partners, and gentle first-game introductions.", neighborhood: "Riverside", visibility: "public" },
-      { slug: "harbor-doubles", ownerId: harborHost.id, name: "Harbor Doubles Circle", description: "A neighborhood doubles group with clear RSVP expectations and a respectful, social pace.", neighborhood: "Old Town", visibility: "public" },
-      { slug: "northside-early-play", ownerId: willowHost.id, name: "Northside Early Play", description: "A member-led early-session group that coordinates recurring play with organizers.", neighborhood: "Northside", visibility: "private" },
-    ]);
-    const seededGroups = await tx.select().from(communityGroups).where(inArray(communityGroups.slug, ["riverside-rally", "harbor-doubles", "northside-early-play"]));
-    const riversideGroup = seededGroups.find(group => group.slug === "riverside-rally");
-    const harborGroup = seededGroups.find(group => group.slug === "harbor-doubles");
-    const northsideGroup = seededGroups.find(group => group.slug === "northside-early-play");
-    if (!riversideGroup || !harborGroup || !northsideGroup) throw new Error("Could not establish community groups.");
-
-    await tx.insert(groupMemberships).values([
-      { groupId: riversideGroup.id, userId: willowHost.id, role: "owner" },
-      { groupId: harborGroup.id, userId: harborHost.id, role: "owner" },
-      { groupId: northsideGroup.id, userId: willowHost.id, role: "owner" },
-    ]);
-
-    const beginnerGame = dateInDays(1, 18, 2);
-    const socialGame = dateInDays(2, 10, 2);
-    const memberGame = dateInDays(3, 7, 2);
-    await tx.insert(games).values([
-      { slug: "riverside-first-rally", organizerId: willowHost.id, venueId: willowVenue.id, groupId: riversideGroup.id, title: "First Rally: easygoing open play", description: "A newcomer-friendly evening with a host available to help with introductions and court rotation.", format: "Open play", skillBand: "New to pickleball · 2.5", capacity: 12, visibility: "public", beginnerFriendly: true, attendanceNote: "Please arrive 10 minutes early so the group can start together.", startsAt: beginnerGame.startsAt, endsAt: beginnerGame.endsAt },
-      { slug: "harbor-social-doubles", organizerId: harborHost.id, venueId: harborVenue.id, groupId: harborGroup.id, title: "Harbor Social Doubles", description: "A relaxed doubles session for players who enjoy steady games and meeting local partners.", format: "Doubles", skillBand: "2.5 · 3.5", capacity: 8, visibility: "public", beginnerFriendly: true, attendanceNote: "Bring water and be ready for rotating partners.", startsAt: socialGame.startsAt, endsAt: socialGame.endsAt },
-      { slug: "northside-early-games", organizerId: willowHost.id, venueId: cedarVenue.id, groupId: northsideGroup.id, title: "Northside early games", description: "A smaller, member-coordinated morning session with a consistent group rhythm.", format: "Doubles", skillBand: "3.0 · 4.0", capacity: 6, visibility: "private", beginnerFriendly: false, attendanceNote: "Member check-in is required before court assignments.", startsAt: memberGame.startsAt, endsAt: memberGame.endsAt },
-    ]);
-    const seededGames = await tx.select().from(games).where(inArray(games.slug, ["riverside-first-rally", "harbor-social-doubles", "northside-early-games"]));
-    const firstRally = seededGames.find(game => game.slug === "riverside-first-rally");
-    const socialDoubles = seededGames.find(game => game.slug === "harbor-social-doubles");
-    const earlyGames = seededGames.find(game => game.slug === "northside-early-games");
-    if (!firstRally || !socialDoubles || !earlyGames) throw new Error("Could not establish community games.");
-
-    await tx.insert(gamePosts).values([
-      { gameId: firstRally.id, groupId: riversideGroup.id, authorId: willowHost.id, headline: "A gentle first session", body: "This session is designed to make first games feel less intimidating. Ask the host for a quick rules refresher or an introduction to a partner.", attendanceExpectations: "Respect the court rotation and let the host know if your plans change." },
-      { gameId: socialDoubles.id, groupId: harborGroup.id, authorId: harborHost.id, headline: "Play, meet, repeat", body: "We will rotate partners and keep the pace social. Please use the RSVP so everyone knows the session is viable.", attendanceExpectations: "Check in with the host before joining a court." },
-      { gameId: earlyGames.id, groupId: northsideGroup.id, authorId: willowHost.id, headline: "Member session details", body: "Court assignments are shared with confirmed members before play begins.", attendanceExpectations: "This activity is limited to approved group members." },
-    ]);
-  });
-}
-
 export async function getOrCreatePlayerProfile(userId: number, accountName?: string | null) {
   const db = await getDb();
   if (!db) return undefined;
@@ -174,7 +90,6 @@ export async function getOrCreatePlayerProfile(userId: number, accountName?: str
 }
 
 export async function getCommunityDashboard(currentUser?: { id: number; name?: string | null; role?: string } | null) {
-  await ensureCommunitySeedData();
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
 
