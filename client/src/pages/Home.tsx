@@ -33,6 +33,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
+import { buildCalendar } from "@shared/ics";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -86,6 +87,57 @@ function BrandMark({ compact = false }: { compact?: boolean }) {
         <span className="absolute h-[2px] w-7 rotate-[-42deg] bg-[#f7d35b]" />
       </div>
       {!compact && <span className="font-[Fraunces] text-[1.3rem] font-semibold tracking-[-0.045em] text-[#173d35]">PicklePlay</span>}
+    </div>
+  );
+}
+
+function GameMonthCalendar({ games, month, onMonthChange, selectedDay, onSelectDay }: { games: { id: number; startsAt: number }[]; month: { year: number; month: number }; onMonthChange: (month: { year: number; month: number }) => void; selectedDay: string | null; onSelectDay: (day: string) => void }) {
+  const monthName = new Date(month.year, month.month, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
+  const firstWeekday = new Date(month.year, month.month, 1).getDay();
+  const daysInMonth = new Date(month.year, month.month + 1, 0).getDate();
+  const gamesByDay = new Map<string, number>();
+  for (const game of games) {
+    const key = new Date(game.startsAt).toLocaleDateString("en-CA");
+    gamesByDay.set(key, (gamesByDay.get(key) ?? 0) + 1);
+  }
+  const shiftMonth = (delta: number) => {
+    const next = new Date(month.year, month.month + delta, 1);
+    onMonthChange({ year: next.getFullYear(), month: next.getMonth() });
+  };
+  const todayKey = new Date().toLocaleDateString("en-CA");
+  return (
+    <div className="mt-6 rounded-[24px] border border-[#dfe1d5] bg-[#fffef9] p-4" data-testid="game-month-calendar">
+      <div className="flex items-center justify-between px-1">
+        <button type="button" onClick={() => shiftMonth(-1)} aria-label="Previous month" className="rounded-full border border-[#d9ddd2] px-3 py-1.5 text-sm font-bold text-[#47685d] hover:bg-[#f1f4ec]">‹</button>
+        <p className="font-[Fraunces] text-lg font-semibold" aria-live="polite">{monthName}</p>
+        <button type="button" onClick={() => shiftMonth(1)} aria-label="Next month" className="rounded-full border border-[#d9ddd2] px-3 py-1.5 text-sm font-bold text-[#47685d] hover:bg-[#f1f4ec]">›</button>
+      </div>
+      <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[10px] font-extrabold uppercase tracking-[.08em] text-[#7a867e]">
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => <span key={day}>{day}</span>)}
+      </div>
+      <div className="mt-1 grid grid-cols-7 gap-1">
+        {Array.from({ length: firstWeekday }).map((_, index) => <span key={`pad-${index}`} aria-hidden="true" />)}
+        {Array.from({ length: daysInMonth }).map((_, index) => {
+          const day = index + 1;
+          const key = new Date(month.year, month.month, day).toLocaleDateString("en-CA");
+          const count = gamesByDay.get(key) ?? 0;
+          const isSelected = selectedDay === key;
+          const isToday = todayKey === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onSelectDay(key)}
+              aria-label={`${count} game${count === 1 ? "" : "s"} on ${new Date(month.year, month.month, day).toLocaleDateString()}`}
+              aria-pressed={isSelected}
+              className={`flex h-11 flex-col items-center justify-center rounded-xl text-sm font-bold transition ${isSelected ? "bg-[#19473e] text-white" : count > 0 ? "bg-[#e6efe2] text-[#2f6f5c] hover:bg-[#d8e7d3]" : "text-[#7a867e] hover:bg-[#f1f4ec]"} ${isToday && !isSelected ? "ring-1 ring-[#8fb59e]" : ""}`}
+            >
+              {day}
+              {count > 0 && <span className={`text-[9px] font-extrabold ${isSelected ? "text-white" : "text-[#3d7558]"}`}>{count}</span>}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -154,12 +206,27 @@ export default function Home() {
   }, []);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [gameFilter, setGameFilter] = useState<"all" | "beginner" | "open">("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchDate, setSearchDate] = useState("");
+  const [searchVenueId, setSearchVenueId] = useState("");
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => { const now = new Date(); return { year: now.getFullYear(), month: now.getMonth() }; });
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [reportDialog, setReportDialog] = useState<{ subjectType: "game" | "group"; subjectId: number; reason: string } | null>(null);
   const [blockDialog, setBlockDialog] = useState<{ hostId: number; reason: string } | null>(null);
   const [profileForm, setProfileForm] = useState(profileDefaults);
   const [groupForm, setGroupForm] = useState({ name: "", description: "", neighborhood: "", visibility: "public" as "public" | "private" });
   const utils = trpc.useUtils();
   const dashboardQuery = trpc.community.dashboard.useQuery();
+  const calendarFeedQuery = trpc.community.calendarFeed.useQuery(undefined, { enabled: isAuthenticated });
+  // Server-side search kicks in only when a term/date/venue filter is set;
+  // the chip filters stay client-side against the dashboard payload.
+  const hasServerFilters = searchTerm.trim().length > 0 || searchDate !== "" || searchVenueId !== "";
+  const searchResults = trpc.community.searchGames.useQuery(
+    { q: searchTerm.trim() || undefined, dateFrom: searchDate ? new Date(`${searchDate}T00:00:00`).getTime() : undefined, dateTo: searchDate ? new Date(`${searchDate}T23:59:59`).getTime() : undefined, venueId: searchVenueId ? Number(searchVenueId) : undefined },
+    { enabled: activeView === "play" && hasServerFilters }
+  );
   const membersQuery = trpc.community.members.useQuery(undefined, { enabled: isAuthenticated });
   const pendingMembershipsQuery = trpc.organizer.membershipRequests.useQuery({ groupId: managedGroupId || 0 }, { enabled: !!managedGroupId });
   const groupMembersQuery = trpc.community.groupMembers.useQuery({ groupId: managedGroupId || 0 }, { enabled: !!managedGroupId });
@@ -274,11 +341,13 @@ export default function Home() {
   }, [dashboard?.profile]);
 
   const visibleGames = useMemo(() => {
-    const allGames = dashboard?.games || [];
-    if (gameFilter === "beginner") return allGames.filter(game => game.beginnerFriendly);
-    if (gameFilter === "open") return allGames.filter(game => game.confirmedCount < game.capacity);
-    return allGames;
-  }, [dashboard?.games, gameFilter]);
+    // Server-side search already applies its filters; combine with the chips.
+    const base = hasServerFilters ? (searchResults.data ?? []) : (dashboard?.games || []);
+    const byDay = selectedDay ? base.filter(game => new Date(game.startsAt).toDateString() === new Date(`${selectedDay}T00:00:00`).toDateString()) : base;
+    if (gameFilter === "beginner") return byDay.filter(game => game.beginnerFriendly);
+    if (gameFilter === "open") return byDay.filter(game => game.confirmedCount < game.capacity);
+    return byDay;
+  }, [dashboard?.games, searchResults.data, hasServerFilters, selectedDay, gameFilter]);
 
   const askForSignIn = () => {
     toast.message("Sign in to join the local community.");
@@ -304,8 +373,7 @@ export default function Home() {
   };
 
   const exportGameCalendar = (game: { id: number; title: string; description: string; startsAt: number; endsAt: number; venueName: string }) => {
-    const toIcs = (value: number) => new Date(value).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-    const content = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//PicklePlay//EN", "BEGIN:VEVENT", `UID:game-${game.id}@pickleplay`, `DTSTART:${toIcs(game.startsAt)}`, `DTEND:${toIcs(game.endsAt)}`, `SUMMARY:${game.title}`, `LOCATION:${game.venueName}`, `DESCRIPTION:${game.description.replace(/\n/g, "\\n")}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+    const content = buildCalendar([game]);
     const url = URL.createObjectURL(new Blob([content], { type: "text/calendar" }));
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -413,7 +481,11 @@ export default function Home() {
         )}
 
         {activeView === "play" && (
-          <section><div className="flex flex-col justify-between gap-5 border-b border-[#dfe1d5] pb-6 lg:flex-row lg:items-end"><div><p className="text-[11px] font-extrabold uppercase tracking-[.14em] text-[#55685e]">Play nearby</p><h1 className="mt-1 font-[Fraunces] text-4xl font-semibold tracking-[-.05em]">Pick your next court time.</h1><p className="mt-3 max-w-xl text-sm leading-6 text-[#69776e]">Every game shows the plan before you join: host, time, format, inclusive skill range, capacity, and visibility.</p></div><div className="flex flex-wrap gap-2">{(["all", "beginner", "open"] as const).map(filter => <button key={filter} onClick={() => setGameFilter(filter)} className={`rounded-full px-4 py-2 text-xs font-bold capitalize transition ${gameFilter === filter ? "bg-[#19473e] text-white" : "border border-[#d9ddd2] bg-white/70 text-[#577166] hover:bg-white"}`}>{filter === "open" ? "Open spots" : filter === "beginner" ? "Beginner-friendly" : "All games"}</button>)}</div></div>
+          <section><div className="flex flex-col justify-between gap-5 border-b border-[#dfe1d5] pb-6 lg:flex-row lg:items-end"><div><p className="text-[11px] font-extrabold uppercase tracking-[.14em] text-[#55685e]">Play nearby</p><h1 className="mt-1 font-[Fraunces] text-4xl font-semibold tracking-[-.05em]">Pick your next court time.</h1><p className="mt-3 max-w-xl text-sm leading-6 text-[#69776e]">Every game shows the plan before you join: host, time, format, inclusive skill range, capacity, and visibility.</p></div><div className="flex flex-wrap gap-2">{(["all", "beginner", "open"] as const).map(filter => <button key={filter} onClick={() => setGameFilter(filter)} className={`rounded-full px-4 py-2 text-xs font-bold capitalize transition ${gameFilter === filter ? "bg-[#19473e] text-white" : "border border-[#d9ddd2] bg-white/70 text-[#577166] hover:bg-white"}`}>{filter === "open" ? "Open spots" : filter === "beginner" ? "Beginner-friendly" : "All games"}</button>)}<button onClick={() => { setCalendarOpen(open => !open); setSelectedDay(null); }} aria-expanded={calendarOpen} className={`rounded-full px-4 py-2 text-xs font-bold transition ${calendarOpen ? "bg-[#19473e] text-white" : "border border-[#d9ddd2] bg-white/70 text-[#577166] hover:bg-white"}`}>Calendar view</button></div></div>
+            <div className="mt-6 grid gap-3 rounded-[24px] border border-[#dfe1d5] bg-[#fffef9] p-4 sm:grid-cols-[1fr_auto_auto]"><form role="search" onSubmit={event => { event.preventDefault(); setSearchTerm(searchInput); setSelectedDay(null); }} className="flex flex-wrap items-center gap-2 sm:flex-nowrap"><label htmlFor="game-search" className="sr-only">Search games</label><Input id="game-search" value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Search by title, format, or description" className="rounded-full sm:min-w-[260px]" /><Button type="submit" variant="outline" className="rounded-full">Search</Button>{(searchTerm || searchDate || searchVenueId) && <Button type="button" variant="ghost" onClick={() => { setSearchInput(""); setSearchTerm(""); setSearchDate(""); setSearchVenueId(""); setSelectedDay(null); }} className="rounded-full">Clear</Button>}</form><div className="flex items-center gap-2"><label htmlFor="game-date" className="sr-only">Filter by date</label><Input id="game-date" type="date" value={searchDate} onChange={event => { setSearchDate(event.target.value); setSelectedDay(null); }} className="rounded-full" /></div><div className="flex items-center gap-2"><label htmlFor="game-venue" className="sr-only">Filter by venue</label><select id="game-venue" value={searchVenueId} onChange={event => { setSearchVenueId(event.target.value); setSelectedDay(null); }} className="h-10 rounded-full border border-[#d9ddd2] bg-white px-3 text-sm text-[#355f52]"><option value="">All venues</option>{(dashboard?.venues || []).map(venue => <option key={venue.id} value={venue.id}>{venue.name}</option>)}</select></div></div>
+            {calendarOpen && <GameMonthCalendar games={visibleGames} month={calendarMonth} onMonthChange={setCalendarMonth} selectedDay={selectedDay} onSelectDay={day => setSelectedDay(day === selectedDay ? null : day)} />}
+            {hasServerFilters && searchResults.isLoading && <p className="mt-6 rounded-3xl bg-white p-6 text-sm text-[#66756c]">Searching games…</p>}
+            {hasServerFilters && searchResults.error && <p className="mt-6 rounded-3xl bg-[#fff0e9] p-6 text-sm text-[#98513d]">{searchResults.error.message}</p>}
             <div className="mt-6 grid gap-5 xl:grid-cols-2">{dashboardQuery.isLoading ? [1, 2, 3, 4].map(item => <div key={item} className="h-[330px] animate-pulse rounded-[28px] bg-[#e5e6dd]" />) : visibleGames.length ? visibleGames.map(game => <article key={game.id} className="relative overflow-hidden rounded-[28px] border border-[#dfe1d5] bg-[#fffef9] p-5 shadow-[0_10px_22px_rgba(61,80,66,.045)] sm:p-6"><div className="flex items-start justify-between gap-3"><div className="flex flex-wrap gap-2">{game.beginnerFriendly && <span className="rounded-full bg-[#e8f1df] px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[.11em] text-[#3d7558]">Beginner-friendly</span>}<span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[.11em] ${game.visibility === "private" ? "bg-[#f1ebe6] text-[#8a5e45]" : "bg-[#edf0e8] text-[#617066]"}`}>{game.visibility === "private" ? <LockKeyhole className="h-3 w-3" /> : <UsersRound className="h-3 w-3" />}{game.visibility === "private" ? "Member session" : "Open to community"}</span></div><button onClick={() => handleReport("game", game.id)} className="rounded-full p-2 text-[#839087] transition hover:bg-[#f3eee9] hover:text-[#b65c44]" aria-label={`Report ${game.title}`}><MoreHorizontal className="h-5 w-5" /></button></div>
               <div className="mt-5 grid grid-cols-[54px_1fr] gap-4"><div className="rounded-2xl bg-[#f0f2e9] p-2 text-center"><p className="text-[10px] font-extrabold uppercase tracking-[.1em] text-[#698176]">{formatGameDate(game.startsAt).split(" ")[0]}</p><p className="mt-0.5 font-[Fraunces] text-xl font-semibold">{new Intl.DateTimeFormat(undefined, { day: "numeric" }).format(new Date(game.startsAt))}</p></div><div><p className="text-xs font-bold text-[#577568]">{formatGameTime(game.startsAt)}–{formatGameTime(game.endsAt)}</p><h2 className="mt-1 font-[Fraunces] text-2xl font-semibold leading-[1.05] tracking-[-.04em] text-[#173d35]">{game.title}</h2><p className="mt-2 text-sm leading-6 text-[#607067]">{game.description}</p><button onClick={() => handleBlockHost(game.organizerId)} className="mt-2 text-xs font-bold text-[#7a6c5a] underline decoration-[#c9bca6] underline-offset-4 hover:text-[#a35843]">Hide this host</button></div></div>
               <div className="mt-5 grid gap-2 border-y border-[#ecece4] py-4 sm:grid-cols-3"><div className="flex items-center gap-2 text-xs font-semibold text-[#54685e]"><MapPin className="h-4 w-4 text-[#d17a55]" /><span>{game.venueName}<br /><span className="font-normal text-[#7b887f]">{game.venueNeighborhood}</span></span></div><div className="flex items-center gap-2 text-xs font-semibold text-[#54685e]"><UsersRound className="h-4 w-4 text-[#d17a55]" /><span>{game.format}<br /><span className="font-normal text-[#7b887f]">{game.skillBand}</span></span></div><div className="flex items-center gap-2 text-xs font-semibold text-[#54685e]"><Crown className="h-4 w-4 text-[#d17a55]" /><span>{game.organizerName}<br /><span className="font-normal text-[#7b887f]">Host</span></span></div></div>
@@ -438,6 +510,7 @@ export default function Home() {
           <section>{!isAuthenticated ? <div className="mx-auto max-w-2xl rounded-[32px] border border-[#dfe1d5] bg-[#fffef9] p-8 text-center sm:p-12"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8f0e6] text-[#39705d]"><CircleUserRound className="h-7 w-7" /></div><h1 className="mt-6 font-[Fraunces] text-4xl font-semibold tracking-[-.05em]">Make pickleball feel more local.</h1><p className="mx-auto mt-4 max-w-md text-sm leading-6 text-[#6a786f]">Create a player profile to RSVP, join public groups, and choose how much of your community context is visible.</p><Button onClick={askForSignIn} className="mt-7 rounded-full bg-[#19473e] px-6 font-bold text-white hover:bg-[#123b33]">Sign in to create your profile</Button></div> : <div className="grid gap-6 lg:grid-cols-[.8fr_1.2fr]"><aside className="rounded-[30px] bg-[#19473e] p-7 text-white"><div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f2cd5f] font-[Fraunces] text-xl font-semibold text-[#173d35]">{getInitials(dashboard?.profile?.displayName || user?.name)}</div><p className="mt-5 text-[11px] font-extrabold uppercase tracking-[.14em] text-[#f6d36a]">Player profile</p><h1 className="mt-2 font-[Fraunces] text-4xl font-semibold tracking-[-.05em]">{dashboard?.profile?.displayName || user?.name || "Your profile"}</h1><p className="mt-3 text-sm leading-6 text-[#d4e2d4]">{dashboard?.profile?.bio || "Add a little about how you like to play so groups and hosts can make a warmer welcome."}</p><div className="mt-7 space-y-3 border-t border-white/15 pt-5"><div className="flex items-center justify-between text-sm"><span className="text-[#c6d7c7]">Skill context</span><span className="font-bold">{dashboard?.profile?.skillBand}</span></div><div className="flex items-center justify-between text-sm"><span className="text-[#c6d7c7]">Visibility</span><span className="font-bold capitalize">{dashboard?.profile?.visibility}</span></div><div className="flex items-center justify-between text-sm"><span className="text-[#c6d7c7]">Rating context</span><span className="font-bold">{dashboard?.profile?.ratingProvenance === "linked_provider" ? "Linked provider" : dashboard?.profile?.ratingProvenance === "self_described" ? "Self-described" : "Not shown"}</span></div></div></aside><div className="rounded-[30px] border border-[#dfe1d5] bg-[#fffef9] p-6 sm:p-8"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-[11px] font-extrabold uppercase tracking-[.14em] text-[#55685e]">Your settings</p><h2 className="mt-1 font-[Fraunces] text-3xl font-semibold tracking-[-.05em]">Keep it useful, keep it yours.</h2></div><button onClick={() => setProfileOpen(true)} className="rounded-full bg-[#19473e] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#123b33]">Edit profile</button></div><div className="mt-7 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl bg-[#f1f4ec] p-4"><p className="text-[10px] font-extrabold uppercase tracking-[.11em] text-[#5f6f66]">Home base</p><p className="mt-2 text-sm font-bold">{dashboard?.profile?.city}</p></div><div className="rounded-2xl bg-[#f1f4ec] p-4"><p className="text-[10px] font-extrabold uppercase tracking-[.11em] text-[#5f6f66]">Formats</p><p className="mt-2 text-sm font-bold">{dashboard?.profile?.preferredFormats}</p></div></div><div className="mt-6 rounded-2xl border border-[#e4e6dc] p-4"><div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 text-[#39705d]" /><p className="text-sm leading-6 text-[#597067]"><strong className="text-[#294e43]">Your rating is never inferred here.</strong> PicklePlay only displays the context you provide, such as self-described or linked-provider status. It does not calculate an authoritative rating.</p></div></div><section className="mt-6 rounded-2xl bg-[#f1f4ec] p-4"><p className="text-[10px] font-extrabold uppercase tracking-[.11em] text-[#5f6f66]">Attendance history</p><div className="mt-3 space-y-2">{dashboard?.attendanceHistory?.length ? dashboard.attendanceHistory.map(item => <div key={`${item.gameId}-${item.recordedAt}`} className="flex items-start justify-between gap-3 rounded-xl bg-white p-3 text-sm"><span>{item.title}{item.correctionNote && <small className="block text-xs text-[#7a6c5a]">{item.correctionNote}</small>}</span><span className="capitalize text-[#587368]">{item.status.replace("_", " ")}</span></div>) : <p className="text-sm text-[#68756d]">Attendance outcomes will appear after an organizer checks in a completed game.</p>}</div></section><button onClick={() => logout()} className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-[#a35843] hover:text-[#803f31]"><DoorOpen className="h-4 w-4" /> Sign out</button></div></div>}</section>
         )}
         {activeView === "profile" && isAuthenticated && <div className="mx-auto max-w-5xl"><EmbeddedProfileNotificationControls preferences={notificationPreferencesQuery.data} isLoading={notificationPreferencesQuery.isLoading} isSaving={updateNotificationPreferencesMutation.isPending} error={notificationPreferencesQuery.error?.message || updateNotificationPreferencesMutation.error?.message} onChange={change => { const preference = notificationPreferencesQuery.data; if (!preference) return; updateNotificationPreferencesMutation.mutate({ inAppEnabled: preference.inAppEnabled, emailEnabled: false, gameUpdatesEnabled: preference.gameUpdatesEnabled, waitlistUpdatesEnabled: preference.waitlistUpdatesEnabled, ...change }); }} /></div>}
+        {activeView === "profile" && isAuthenticated && <section className="mx-auto mt-6 max-w-5xl rounded-[28px] border border-[#dfe1d5] bg-[#fffef9] p-6"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[11px] font-extrabold uppercase tracking-[.14em] text-[#55685e]">Calendar sync</p><h2 className="mt-1 font-[Fraunces] text-2xl font-semibold">Follow your games in your own calendar.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#69776e]">Subscribe once and every game you join or waitlist for appears automatically in Google Calendar, Apple Calendar, or Outlook.</p></div></div><div className="mt-4 flex flex-wrap gap-2">{calendarFeedQuery.data ? <Button onClick={() => { const url = `${window.location.origin}${calendarFeedQuery.data.url}`; navigator.clipboard?.writeText(url).then(() => toast.success("Calendar link copied — paste it into your calendar app.")).catch(() => toast.message(url)); }} className="rounded-full bg-[#19473e] text-white hover:bg-[#123b33]">Copy calendar link</Button> : <Button disabled className="rounded-full bg-[#19473e] text-white">Copy calendar link</Button>}<a href={calendarFeedQuery.data?.url ?? "#"} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center rounded-full border border-[#d5ddd2] px-4 text-sm font-bold text-[#39705d] hover:bg-[#eef3ea]">Preview feed</a></div></section>}
         {activeView === "profile" && isAuthenticated && dashboard?.savedGameIds?.length ? <section className="mx-auto mt-6 max-w-5xl rounded-[28px] border border-[#dfe1d5] bg-[#fffef9] p-6"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[11px] font-extrabold uppercase tracking-[.14em] text-[#55685e]">Saved games</p><h2 className="mt-1 font-[Fraunces] text-2xl font-semibold">Keep your next sessions close.</h2></div><a href="/?view=play" className="rounded-full border border-[#d5ddd2] px-4 py-2 text-sm font-bold text-[#39705d] hover:bg-[#eef3ea]">Browse games</a></div><div className="mt-5 grid gap-3 md:grid-cols-2">{dashboard.games.filter(game => dashboard.savedGameIds.includes(game.id)).map(game => <article key={`saved-${game.id}`} className="rounded-2xl bg-[#f1f4ec] p-4"><p className="text-xs font-bold text-[#577568]">{formatGameDate(game.startsAt)} · {formatGameTime(game.startsAt)}</p><h3 className="mt-1 font-[Fraunces] text-xl font-semibold">{game.title}</h3><p className="mt-1 text-xs text-[#68756d]">{game.venueName} · {game.format}</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => saveGameMutation.mutate({ gameId: game.id, saved: false })} className="rounded-full border border-[#d3ddd1] bg-white px-3 py-2 text-xs font-bold text-[#496a5e] hover:bg-[#f7faf4]">Remove</button><button onClick={() => exportGameCalendar(game)} className="rounded-full border border-[#d3ddd1] bg-white px-3 py-2 text-xs font-bold text-[#496a5e] hover:bg-[#f7faf4]">Calendar</button>{game.userRsvpState && <a href={`/games/${game.id}/thread`} className="rounded-full border border-[#d3ddd1] bg-white px-3 py-2 text-xs font-bold text-[#496a5e] hover:bg-[#f7faf4]">Thread</a>}</div></article>)}</div></section> : null}
       </main>
 

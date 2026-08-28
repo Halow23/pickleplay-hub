@@ -12,6 +12,8 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { ENV, validateEnv } from "./env";
 import { originGuard } from "./originGuard";
+import { buildCalendar } from "@shared/ics";
+import { listCalendarFeedGames } from "../db";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -87,6 +89,25 @@ async function startServer() {
   // stay before the tRPC mount and not touch the database.
   app.get("/api/health", (_req, res) => {
     res.status(200).json({ status: "ok", uptime: process.uptime() });
+  });
+  // Personal ICS calendar feed; the unguessable token in the URL is the only
+  // credential (calendars subscribe without cookies), so no session required.
+  app.get("/api/calendar/:token/feed.ics", async (req, res) => {
+    try {
+      const games = await listCalendarFeedGames(String(req.params.token));
+      if (!games) {
+        res.status(404).set("Content-Type", "text/plain").send("Unknown calendar feed.");
+        return;
+      }
+      res
+        .set("Content-Type", "text/calendar; charset=utf-8")
+        .set("Content-Disposition", 'inline; filename="pickleplay.ics"')
+        .set("Cache-Control", "no-store")
+        .send(buildCalendar(games));
+    } catch (error) {
+      console.error("[Calendar] Feed failed", error);
+      res.status(500).set("Content-Type", "text/plain").send("Calendar feed is temporarily unavailable.");
+    }
   });
   // tRPC API
   app.use(

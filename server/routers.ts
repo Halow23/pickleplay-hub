@@ -7,6 +7,7 @@ import {
   getModerationReports,
   getModerationAudit,
   getCommunityDashboard,
+  getOrCreateCalendarFeedToken,
   joinCommunityGroup,
   markNotificationsRead,
   respondToGame,
@@ -17,7 +18,7 @@ import {
   updatePlayerProfile,
 } from "./db";
 import { archiveOrganizerGame, cancelOrganizerGame, createOrganizerGame, getOrganizerRoster, listOrganizerGames, publishOrganizerGame, updateOrganizerGame } from "./organizerService";
-import { acceptGroupInvite, addGameThreadPost, createCommunityGroup, createGroupInvite, listCommunityMembers, listGameThreadPosts, listGroupMembershipRequests, listVisibleGroupMembers, recordAttendance, removeSavedGameForPlayer, requestGroupMembership, reviewGroupMembership, saveGameForPlayer, transferGroupOwnership, updateGroupMemberRole } from "./communityService";
+import { acceptGroupInvite, addGameThreadPost, createCommunityGroup, createGroupInvite, listCommunityMembers, listGameThreadPosts, listGroupMembershipRequests, listVisibleGroupMembers, recordAttendance, removeSavedGameForPlayer, requestGroupMembership, reviewGroupMembership, saveGameForPlayer, searchCommunityGames, transferGroupOwnership, updateGroupMemberRole } from "./communityService";
 import { bootstrapProjectOwnerAdmin, listAdminUsers, setUserStatus, updateUserRole } from "./adminService";
 import { getNotificationPreferences, updateNotificationPreferences } from "./notificationPreferences";
 import { addVenueSource, addVenueStaff, listVenueReviews, reviewVenueClaim, reviewVenueCorrection, setVenueVerificationState, submitVenueClaim, submitVenueCorrection } from "./venueService";
@@ -125,6 +126,8 @@ export const appRouter = router({
     notificationPreferences: protectedProcedure.query(async ({ ctx }) => getNotificationPreferences(ctx.user.id)),
     updateNotificationPreferences: protectedProcedure.input(z.object({ inAppEnabled: z.boolean(), emailEnabled: z.boolean(), gameUpdatesEnabled: z.boolean(), waitlistUpdatesEnabled: z.boolean() })).mutation(async ({ ctx, input }) => updateNotificationPreferences(ctx.user.id, input)),
     members: protectedProcedure.query(async ({ ctx }) => listCommunityMembers(ctx.user.id)),
+    searchGames: publicProcedure.input(z.object({ q: z.string().trim().max(120).optional(), dateFrom: z.number().int().positive().optional(), dateTo: z.number().int().positive().optional(), skillBand: z.string().trim().max(80).optional(), venueId: z.number().int().positive().optional() }).partial().optional()).query(async ({ ctx, input }) => { try { return await searchCommunityGames(input ?? {}, ctx.user?.id); } catch (error) { return communityError(error); } }),
+    calendarFeed: protectedProcedure.query(async ({ ctx }) => { try { const token = await getOrCreateCalendarFeedToken(ctx.user.id); return { url: `/api/calendar/${token}/feed.ics` }; } catch (error) { return communityError(error); } }),
     groupMembers: protectedProcedure.input(z.object({ groupId: z.number().int().positive() })).query(async ({ ctx, input }) => { try { return await listVisibleGroupMembers(ctx.user.id, input.groupId); } catch (error) { return communityError(error); } }),
     createGroup: protectedProcedure.input(z.object({ name: z.string().trim().min(3).max(160), description: z.string().trim().min(10).max(1600), neighborhood: z.string().trim().min(2).max(120), visibility: z.enum(["public", "private"]) })).mutation(async ({ ctx, input }) => { try { return await createCommunityGroup(ctx.user, input); } catch (error) { return communityError(error); } }),
     requestGroupMembership: protectedProcedure.input(z.object({ groupId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { try { return await requestGroupMembership(ctx.user.id, input.groupId); } catch (error) { return communityError(error); } }),

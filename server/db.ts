@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import { nanoid } from "nanoid";
 import {
   attendanceRecords,
   auditEvents,
@@ -83,10 +84,52 @@ export async function getOrCreatePlayerProfile(userId: number, accountName?: str
   // otherwise both insert and the loser would fail the unique constraint.
   await db
     .insert(playerProfiles)
-    .values({ userId, displayName: accountName?.trim() || "New PicklePlayer" })
+    .values({ userId, displayName: accountName?.trim() || "New PicklePlayer", calendarFeedToken: nanoid(32) })
     .onDuplicateKeyUpdate({ set: { userId } });
   const created = await db.select().from(playerProfiles).where(eq(playerProfiles.userId, userId)).limit(1);
   return created[0];
+}
+
+/** Returns the user's calendar feed token, minting one lazily so existing profiles get a feed too. */
+export async function getOrCreateCalendarFeedToken(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  const profile = (await db.select({ calendarFeedToken: playerProfiles.calendarFeedToken }).from(playerProfiles).where(eq(playerProfiles.userId, userId)).limit(1))[0];
+  if (profile?.calendarFeedToken) return profile.calendarFeedToken;
+  // Retry once on a (vanishingly unlikely) nanoid collision.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = nanoid(32);
+    try {
+      await db.update(playerProfiles).set({ calendarFeedToken: token }).where(and(eq(playerProfiles.userId, userId), isNull(playerProfiles.calendarFeedToken)));
+      return token;
+    } catch {
+      // Collision on the unique index — fall through and retry.
+    }
+  }
+  throw new Error("Could not assign a calendar feed token. Please try again.");
+}
+
+/** Lists the confirmed/waitlisted upcoming games for a calendar feed token, or undefined for an unknown token. */
+export async function listCalendarFeedGames(token: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  const profile = (await db.select({ userId: playerProfiles.userId }).from(playerProfiles).where(eq(playerProfiles.calendarFeedToken, token)).limit(1))[0];
+  if (!profile) return undefined;
+  return db
+    .select({
+      id: games.id,
+      title: games.title,
+      description: games.description,
+      startsAt: games.startsAt,
+      endsAt: games.endsAt,
+      venueName: venues.name,
+    })
+    .from(rsvps)
+    .innerJoin(games, eq(rsvps.gameId, games.id))
+    .innerJoin(venues, eq(games.venueId, venues.id))
+    .where(and(eq(rsvps.userId, profile.userId), inArray(rsvps.state, ["confirmed", "waitlisted"]), gte(games.endsAt, new Date())))
+    .orderBy(asc(games.startsAt))
+    .limit(100);
 }
 
 export async function getCommunityDashboard(currentUser?: { id: number; name?: string | null; role?: string } | null) {

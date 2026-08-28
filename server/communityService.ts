@@ -1,6 +1,6 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, lte, or, like } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { attendanceRecords, auditEvents, communityGroups, gameThreads, games, groupInvites, groupMemberships, playerProfiles, rsvps, savedGames, users } from "../drizzle/schema";
+import { attendanceRecords, auditEvents, communityGroups, gameThreads, games, groupInvites, groupMemberships, playerProfiles, rsvps, savedGames, users, venues } from "../drizzle/schema";
 import { getDb } from "./db";
 import { OrganizerActor } from "./organizerService";
 import { assertActiveGroupMember, assertGroupOwnerAccess, assertValidGroupInvite, canViewPrivateGroupMembers, membershipStateForVisibility } from "./communityAccess";
@@ -48,6 +48,84 @@ export async function listCommunityMembers(currentUserId?: number) {
   const rows = await db.select({ userId: users.id, displayName: playerProfiles.displayName, city: playerProfiles.city, bio: playerProfiles.bio, skillBand: playerProfiles.skillBand, preferredFormats: playerProfiles.preferredFormats, visibility: playerProfiles.visibility, role: users.role })
     .from(playerProfiles).innerJoin(users, eq(playerProfiles.userId, users.id)).where(eq(playerProfiles.visibility, "community")).orderBy(asc(playerProfiles.displayName)).limit(50);
   return rows.filter(row => row.userId !== currentUserId);
+}
+
+export type GameSearchFilters = {
+  q?: string;
+  dateFrom?: number;
+  dateTo?: number;
+  skillBand?: string;
+  venueId?: number;
+};
+
+/** Builds the where-clause conditions for a public-game search (exported for testing). */
+export function gameSearchConditions(filters: GameSearchFilters) {
+  const conditions = [eq(games.status, "published"), eq(games.visibility, "public"), gte(games.endsAt, new Date())];
+  const term = filters.q?.trim();
+  if (term) {
+    const pattern = `%${term}%`;
+    conditions.push(or(like(games.title, pattern), like(games.description, pattern), like(games.format, pattern))!);
+  }
+  if (filters.dateFrom) conditions.push(gte(games.startsAt, new Date(filters.dateFrom)));
+  if (filters.dateTo) conditions.push(lte(games.startsAt, new Date(filters.dateTo)));
+  if (filters.skillBand) conditions.push(eq(games.skillBand, filters.skillBand));
+  if (filters.venueId) conditions.push(eq(games.venueId, filters.venueId));
+  return conditions;
+}
+
+/** Searches upcoming published public games by text, date range, skill band, or venue. */
+export async function searchCommunityGames(filters: GameSearchFilters, currentUserId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  const conditions = gameSearchConditions(filters);
+  const rows = await db
+    .select({
+      id: games.id,
+      title: games.title,
+      description: games.description,
+      format: games.format,
+      skillBand: games.skillBand,
+      capacity: games.capacity,
+      visibility: games.visibility,
+      status: games.status,
+      beginnerFriendly: games.beginnerFriendly,
+      attendanceNote: games.attendanceNote,
+      startsAt: games.startsAt,
+      endsAt: games.endsAt,
+      rsvpDeadlineAt: games.rsvpDeadlineAt,
+      cancellationReason: games.cancellationReason,
+      venueName: venues.name,
+      venueNeighborhood: venues.neighborhood,
+      organizerId: games.organizerId,
+      organizerName: users.name,
+    })
+    .from(games)
+    .innerJoin(venues, eq(games.venueId, venues.id))
+    .innerJoin(users, eq(games.organizerId, users.id))
+    .where(and(...conditions))
+    .orderBy(asc(games.startsAt))
+    .limit(60);
+
+  const gameIds = rows.map(row => row.id);
+  const confirmedCounts = gameIds.length
+    ? await db.select({ gameId: rsvps.gameId, total: count(rsvps.id) }).from(rsvps).where(and(eq(rsvps.state, "confirmed"), inArray(rsvps.gameId, gameIds))).groupBy(rsvps.gameId)
+    : [];
+  const confirmedByGame = new Map(confirmedCounts.map(row => [row.gameId, Number(row.total)]));
+  const ownRsvps = currentUserId && gameIds.length
+    ? await db.select({ gameId: rsvps.gameId, state: rsvps.state }).from(rsvps).where(and(eq(rsvps.userId, currentUserId), inArray(rsvps.gameId, gameIds), inArray(rsvps.state, ["confirmed", "waitlisted"])))
+    : [];
+  const rsvpByGame = new Map(ownRsvps.map(row => [row.gameId, row.state]));
+
+  return rows.map(game => ({
+    ...game,
+    organizerName: game.organizerName ?? "Community host",
+    startsAt: game.startsAt.getTime(),
+    endsAt: game.endsAt.getTime(),
+    rsvpDeadlineAt: game.rsvpDeadlineAt?.getTime() ?? null,
+    confirmedCount: confirmedByGame.get(game.id) ?? 0,
+    userRsvpState: rsvpByGame.get(game.id) ?? null,
+    canAccess: true,
+  }));
 }
 
 export async function listVisibleGroupMembers(currentUserId: number, groupId: number) {

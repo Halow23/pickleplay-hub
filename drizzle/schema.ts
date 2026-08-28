@@ -53,10 +53,13 @@ export const playerProfiles = mysqlTable(
       .notNull(),
     visibility: mysqlEnum("visibility", ["community", "private"]).default("community").notNull(),
     preferredFormats: varchar("preferredFormats", { length: 180 }).notNull().default("Open play, doubles"),
+    // Secret token for the user's personal ICS calendar feed; regenerating
+    // it invalidates any subscribed calendar URLs.
+    calendarFeedToken: varchar("calendarFeedToken", { length: 64 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    updatedAt: timestamp("updatedAt").onUpdateNow().notNull(),
   },
-  table => [uniqueIndex("player_profiles_user_unique").on(table.userId)]
+  table => [uniqueIndex("player_profiles_user_unique").on(table.userId), uniqueIndex("player_profiles_feed_token_unique").on(table.calendarFeedToken)]
 );
 
 export const venues = mysqlTable(
