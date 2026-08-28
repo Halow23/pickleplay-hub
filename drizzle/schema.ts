@@ -13,6 +13,7 @@ import {
 export const userRoles = ["user", "player", "organizer", "moderator", "admin"] as const;
 export const gameVisibility = ["public", "private"] as const;
 export const gameStatuses = ["draft", "published", "cancelled", "archived"] as const;
+export const gameRecurrences = ["none", "weekly", "biweekly"] as const;
 export const rsvpStates = ["confirmed", "waitlisted"] as const;
 export const groupMembershipRoles = ["member", "moderator", "owner"] as const;
 export const groupMembershipStates = ["pending", "active", "denied", "removed"] as const;
@@ -190,6 +191,10 @@ export const games = mysqlTable(
     endsAt: timestamp("endsAt").notNull(),
     rsvpDeadlineAt: timestamp("rsvpDeadlineAt"),
     cancellationReason: varchar("cancellationReason", { length: 300 }),
+    // Recurring series: the root game of a series has recurrence set; later
+    // occurrences point back to it via parentGameId.
+    recurrence: mysqlEnum("recurrence", gameRecurrences).default("none").notNull(),
+    parentGameId: int("parentGameId"),
     publishedAt: timestamp("publishedAt"),
     cancelledAt: timestamp("cancelledAt"),
     updatedBy: int("updatedBy").references(() => users.id, { onDelete: "set null" }),

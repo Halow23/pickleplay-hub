@@ -17,7 +17,7 @@ import {
   sendGameUpdate,
   updatePlayerProfile,
 } from "./db";
-import { archiveOrganizerGame, cancelOrganizerGame, createOrganizerGame, getOrganizerRoster, listOrganizerGames, publishOrganizerGame, updateOrganizerGame } from "./organizerService";
+import { archiveOrganizerGame, cancelOrganizerGame, createOrganizerGame, extendOrganizerSeries, getOrganizerRoster, listOrganizerGames, publishOrganizerGame, updateOrganizerGame } from "./organizerService";
 import { acceptGroupInvite, addGameThreadPost, createCommunityGroup, createGroupInvite, listCommunityMembers, listGameThreadPosts, listGroupMembershipRequests, listVisibleGroupMembers, recordAttendance, removeSavedGameForPlayer, requestGroupMembership, reviewGroupMembership, saveGameForPlayer, searchCommunityGames, transferGroupOwnership, updateGroupMemberRole } from "./communityService";
 import { bootstrapProjectOwnerAdmin, listAdminUsers, setUserStatus, updateUserRole } from "./adminService";
 import { getNotificationPreferences, updateNotificationPreferences } from "./notificationPreferences";
@@ -143,10 +143,11 @@ export const appRouter = router({
       try { return await listOrganizerGames(ctx.user); } catch (error) { return communityError(error); }
     }),
     createGame: protectedProcedure
-      .input(z.object({ venueId: z.number().int().positive(), groupId: z.number().int().positive().nullable().optional(), title: z.string().trim().min(3).max(180), description: z.string().trim().min(3).max(2000), format: z.string().trim().min(2).max(80), skillBand: z.string().trim().min(2).max(80), capacity: z.number().int().min(1).max(200), visibility: z.enum(["public", "private"]), beginnerFriendly: z.boolean(), attendanceNote: z.string().trim().min(3).max(240), startsAt: z.number().int().positive(), endsAt: z.number().int().positive(), rsvpDeadlineAt: z.number().int().positive().nullable().optional(), publish: z.boolean().default(false) }))
+      .input(z.object({ venueId: z.number().int().positive(), groupId: z.number().int().positive().nullable().optional(), title: z.string().trim().min(3).max(180), description: z.string().trim().min(3).max(2000), format: z.string().trim().min(2).max(80), skillBand: z.string().trim().min(2).max(80), capacity: z.number().int().min(1).max(200), visibility: z.enum(["public", "private"]), beginnerFriendly: z.boolean(), attendanceNote: z.string().trim().min(3).max(240), startsAt: z.number().int().positive(), endsAt: z.number().int().positive(), rsvpDeadlineAt: z.number().int().positive().nullable().optional(), recurrence: z.enum(["none", "weekly", "biweekly"]).default("none"), publish: z.boolean().default(false) }))
       .mutation(async ({ ctx, input }) => {
         try { const { publish, startsAt, endsAt, rsvpDeadlineAt, ...rest } = input; return await createOrganizerGame(ctx.user, { ...rest, startsAt: new Date(startsAt), endsAt: new Date(endsAt), rsvpDeadlineAt: rsvpDeadlineAt ? new Date(rsvpDeadlineAt) : null }, publish); } catch (error) { return communityError(error); }
       }),
+    extendSeries: protectedProcedure.input(z.object({ gameId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { try { return await extendOrganizerSeries(ctx.user, input.gameId); } catch (error) { return communityError(error); } }),
     updateGame: protectedProcedure
       .input(z.object({ gameId: z.number().int().positive(), venueId: z.number().int().positive(), groupId: z.number().int().positive().nullable().optional(), title: z.string().trim().min(3).max(180), description: z.string().trim().min(3).max(2000), format: z.string().trim().min(2).max(80), skillBand: z.string().trim().min(2).max(80), capacity: z.number().int().min(1).max(200), visibility: z.enum(["public", "private"]), beginnerFriendly: z.boolean(), attendanceNote: z.string().trim().min(3).max(240), startsAt: z.number().int().positive(), endsAt: z.number().int().positive(), rsvpDeadlineAt: z.number().int().positive().nullable().optional() }))
       .mutation(async ({ ctx, input }) => { try { const { gameId, startsAt, endsAt, rsvpDeadlineAt, ...rest } = input; return await updateOrganizerGame(ctx.user, gameId, { ...rest, startsAt: new Date(startsAt), endsAt: new Date(endsAt), rsvpDeadlineAt: rsvpDeadlineAt ? new Date(rsvpDeadlineAt) : null }); } catch (error) { return communityError(error); } }),

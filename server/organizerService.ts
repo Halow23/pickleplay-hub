@@ -21,7 +21,29 @@ export type GameInput = {
   startsAt: Date;
   endsAt: Date;
   rsvpDeadlineAt?: Date | null;
+  recurrence?: "none" | "weekly" | "biweekly";
 };
+
+export type GameRecurrence = NonNullable<GameInput["recurrence"]>;
+
+/** How many occurrences a new series materializes up front. */
+export const SERIES_INITIAL_OCCURRENCES = 8;
+
+function recurrenceStepMs(recurrence: GameRecurrence) {
+  const days = recurrence === "weekly" ? 7 : 14;
+  return days * 24 * 60 * 60 * 1000;
+}
+
+/** Computes the start/end/deadline timestamps for the nth occurrence of a series (pure, exported for tests). */
+export function seriesOccurrenceTimes(input: { startsAt: Date; endsAt: Date; rsvpDeadlineAt?: Date | null }, recurrence: GameRecurrence, occurrence: number) {
+  if (occurrence === 0) return { startsAt: input.startsAt, endsAt: input.endsAt, rsvpDeadlineAt: input.rsvpDeadlineAt ?? null };
+  const step = recurrenceStepMs(recurrence);
+  return {
+    startsAt: new Date(input.startsAt.getTime() + step * occurrence),
+    endsAt: new Date(input.endsAt.getTime() + step * occurrence),
+    rsvpDeadlineAt: input.rsvpDeadlineAt ? new Date(input.rsvpDeadlineAt.getTime() + step * occurrence) : null,
+  };
+}
 
 function makeSlug(title: string) {
   const stem = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 68) || "game";
@@ -80,9 +102,11 @@ export async function createOrganizerGame(actor: OrganizerActor, input: GameInpu
   if (!venue) throw new Error("The selected venue is unavailable.");
   const now = new Date();
   const rsvpDeadlineAt = resolveRsvpDeadline(input.startsAt, input.rsvpDeadlineAt);
+  const recurrence: GameRecurrence = input.recurrence ?? "none";
   const slug = makeSlug(input.title);
   await db.insert(games).values({
     ...input,
+    recurrence,
     rsvpDeadlineAt,
     groupId: input.groupId || null,
     slug,
@@ -93,7 +117,68 @@ export async function createOrganizerGame(actor: OrganizerActor, input: GameInpu
   });
   const created = selectCreatedOrganizerGame(await db.select().from(games).where(eq(games.slug, slug)).limit(1), slug);
   await writeAudit(actor.id, publish ? "game_published" : "game_created", "game", created.id, { status: created.status });
+
+  if (recurrence !== "none") {
+    // Later occurrences start as drafts linked to the root; the organizer
+    // publishes each session (or the whole series via extend/publish).
+    const values = Array.from({ length: SERIES_INITIAL_OCCURRENCES - 1 }, (_, index) => {
+      const times = seriesOccurrenceTimes(input, recurrence, index + 1);
+      return {
+        ...input,
+        recurrence,
+        ...times,
+        groupId: input.groupId || null,
+        slug: makeSlug(input.title),
+        organizerId: actor.id,
+        parentGameId: created.id,
+        status: "draft" as const,
+        publishedAt: null,
+        updatedBy: actor.id,
+      };
+    });
+    await db.insert(games).values(values);
+    await writeAudit(actor.id, "game_series_created", "game", created.id, { recurrence, occurrences: SERIES_INITIAL_OCCURRENCES });
+  }
   return created;
+}
+
+/** Appends the next batch of occurrences to an existing series the actor owns. */
+export async function extendOrganizerSeries(actor: OrganizerActor, rootGameId: number) {
+  const root = await getManagedGame(actor, rootGameId);
+  if (!root.parentGameId && root.recurrence === "none") throw new Error("This game is not part of a recurring series.");
+  const seriesRootId = root.parentGameId ?? root.id;
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  const seriesRoot = seriesRootId === root.id ? root : (await db.select().from(games).where(eq(games.id, seriesRootId)).limit(1))[0];
+  if (!seriesRoot) throw new Error("This game is no longer available.");
+  if (seriesRoot.recurrence === "none") throw new Error("This game is not part of a recurring series.");
+  const members = await db.select({ startsAt: games.startsAt }).from(games).where(eq(games.parentGameId, seriesRootId)).orderBy(asc(games.startsAt));
+  const latest = members.length ? members[members.length - 1].startsAt : seriesRoot.startsAt;
+  const times = seriesOccurrenceTimes({ startsAt: latest, endsAt: new Date(latest.getTime() + (seriesRoot.endsAt.getTime() - seriesRoot.startsAt.getTime())), rsvpDeadlineAt: null }, seriesRoot.recurrence, 1);
+  await db.insert(games).values({
+    venueId: seriesRoot.venueId,
+    groupId: seriesRoot.groupId,
+    title: seriesRoot.title,
+    description: seriesRoot.description,
+    format: seriesRoot.format,
+    skillBand: seriesRoot.skillBand,
+    capacity: seriesRoot.capacity,
+    visibility: seriesRoot.visibility,
+    beginnerFriendly: seriesRoot.beginnerFriendly,
+    attendanceNote: seriesRoot.attendanceNote,
+    startsAt: times.startsAt,
+    endsAt: times.endsAt,
+    rsvpDeadlineAt: new Date(times.startsAt.getTime() - RSVP_CUTOFF_MS),
+    recurrence: seriesRoot.recurrence,
+    slug: makeSlug(seriesRoot.title),
+    organizerId: seriesRoot.organizerId,
+    parentGameId: seriesRootId,
+    status: "draft",
+    publishedAt: null,
+    updatedBy: actor.id,
+  });
+  await writeAudit(actor.id, "game_series_extended", "game", seriesRootId, { startsAt: times.startsAt.toISOString() });
+  return { startsAt: times.startsAt.getTime() };
 }
 
 export async function updateOrganizerGame(actor: OrganizerActor, gameId: number, input: GameInput) {
@@ -162,6 +247,6 @@ export async function listOrganizerGames(actor: OrganizerActor) {
   if (!canCreateOrganizerGame(actor.role)) throw new Error("Organizer access is required.");
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
-  return db.select({ id: games.id, title: games.title, description: games.description, status: games.status, startsAt: games.startsAt, endsAt: games.endsAt, rsvpDeadlineAt: games.rsvpDeadlineAt, capacity: games.capacity, venueId: games.venueId, venueName: venues.name, groupId: games.groupId, format: games.format, skillBand: games.skillBand, visibility: games.visibility, beginnerFriendly: games.beginnerFriendly, attendanceNote: games.attendanceNote })
+  return db.select({ id: games.id, title: games.title, description: games.description, status: games.status, startsAt: games.startsAt, endsAt: games.endsAt, rsvpDeadlineAt: games.rsvpDeadlineAt, capacity: games.capacity, venueId: games.venueId, venueName: venues.name, groupId: games.groupId, format: games.format, skillBand: games.skillBand, visibility: games.visibility, beginnerFriendly: games.beginnerFriendly, attendanceNote: games.attendanceNote, recurrence: games.recurrence, parentGameId: games.parentGameId })
     .from(games).innerJoin(venues, eq(games.venueId, venues.id)).where(actor.role === "admin" ? undefined : eq(games.organizerId, actor.id)).orderBy(asc(games.startsAt)).limit(50);
 }
