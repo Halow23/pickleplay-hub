@@ -17,6 +17,16 @@ const requireUser = t.middleware(async opts => {
     throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
   }
 
+  if (ctx.user.status === "suspended" || ctx.user.status === "banned") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message:
+        ctx.user.status === "banned"
+          ? "This account has been banned from PicklePlay."
+          : "This account is currently suspended. Contact support for details.",
+    });
+  }
+
   return next({
     ctx: {
       ...ctx,
@@ -33,6 +43,10 @@ export const adminProcedure = t.procedure.use(
 
     if (!ctx.user || ctx.user.role !== 'admin') {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
+    }
+
+    if (ctx.user.status === "suspended" || ctx.user.status === "banned") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "This account cannot perform administrative actions." });
     }
 
     return next({

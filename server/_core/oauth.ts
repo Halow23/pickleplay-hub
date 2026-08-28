@@ -48,6 +48,14 @@ export function registerOAuthRoutes(app: Express) {
         lastSignedIn: new Date(),
       });
 
+      // Banned accounts must not receive a fresh session, even though
+      // existing sessions are also rejected by the tRPC middleware.
+      const existingUser = await db.getUserByOpenId(userInfo.openId);
+      if (existingUser?.status === "banned") {
+        res.redirect(302, "/?account=banned");
+        return;
+      }
+
       const sessionToken = await sdk.createSessionToken(userInfo.openId, {
         name: userInfo.name || "",
         expiresInMs: ONE_YEAR_MS,

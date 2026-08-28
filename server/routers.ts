@@ -18,7 +18,7 @@ import {
 } from "./db";
 import { archiveOrganizerGame, cancelOrganizerGame, createOrganizerGame, getOrganizerRoster, listOrganizerGames, publishOrganizerGame, updateOrganizerGame } from "./organizerService";
 import { acceptGroupInvite, addGameThreadPost, createCommunityGroup, createGroupInvite, listCommunityMembers, listGameThreadPosts, listGroupMembershipRequests, listVisibleGroupMembers, recordAttendance, removeSavedGameForPlayer, requestGroupMembership, reviewGroupMembership, saveGameForPlayer, transferGroupOwnership, updateGroupMemberRole } from "./communityService";
-import { bootstrapProjectOwnerAdmin, listAdminUsers, updateUserRole } from "./adminService";
+import { bootstrapProjectOwnerAdmin, listAdminUsers, setUserStatus, updateUserRole } from "./adminService";
 import { getNotificationPreferences, updateNotificationPreferences } from "./notificationPreferences";
 import { addVenueSource, addVenueStaff, listVenueReviews, reviewVenueClaim, reviewVenueCorrection, setVenueVerificationState, submitVenueClaim, submitVenueCorrection } from "./venueService";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -109,7 +109,7 @@ export const appRouter = router({
     assignReport: protectedProcedure.input(z.object({ reportId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       try { return await assignCommunityReport(ctx.user, input.reportId); } catch (error) { return communityError(error); }
     }),
-    resolveReport: protectedProcedure.input(z.object({ reportId: z.number().int().positive(), resolutionReason: z.string().trim().min(3).max(300), resolutionNote: z.string().trim().max(600).optional(), sanction: z.enum(["none", "warning", "suspension", "ban"]) })).mutation(async ({ ctx, input }) => {
+    resolveReport: protectedProcedure.input(z.object({ reportId: z.number().int().positive(), resolutionReason: z.string().trim().min(3).max(300), resolutionNote: z.string().trim().max(600).optional(), sanction: z.enum(["none", "warning", "suspension", "ban"]), subjectUserId: z.number().int().positive().optional() })).mutation(async ({ ctx, input }) => {
       try { return await resolveCommunityReport(ctx.user, input); } catch (error) { return communityError(error); }
     }),
     organizerUpdate: protectedProcedure
@@ -162,6 +162,7 @@ export const appRouter = router({
     bootstrap: protectedProcedure.mutation(async ({ ctx }) => { try { return await bootstrapProjectOwnerAdmin(ctx.user); } catch (error) { return communityError(error); } }),
     users: protectedProcedure.query(async ({ ctx }) => { try { return await listAdminUsers(ctx.user); } catch (error) { return communityError(error); } }),
     updateUserRole: protectedProcedure.input(z.object({ userId: z.number().int().positive(), role: z.enum(["player", "organizer", "moderator", "admin"]) })).mutation(async ({ ctx, input }) => { try { return await updateUserRole(ctx.user, input.userId, input.role); } catch (error) { return communityError(error); } }),
+    setUserStatus: protectedProcedure.input(z.object({ userId: z.number().int().positive(), status: z.enum(["active", "suspended", "banned"]) })).mutation(async ({ ctx, input }) => { try { return await setUserStatus(ctx.user, input.userId, input.status); } catch (error) { return communityError(error); } }),
     venueReviews: protectedProcedure.query(async ({ ctx }) => { try { return await listVenueReviews(ctx.user); } catch (error) { return communityError(error); } }),
     reviewVenueClaim: protectedProcedure.input(z.object({ claimId: z.number().int().positive(), state: z.enum(["reviewing", "accepted", "rejected"]) })).mutation(async ({ ctx, input }) => { try { return await reviewVenueClaim(ctx.user, input.claimId, input.state); } catch (error) { return communityError(error); } }),
     reviewVenueCorrection: protectedProcedure.input(z.object({ correctionId: z.number().int().positive(), state: z.enum(["reviewing", "accepted", "rejected"]) })).mutation(async ({ ctx, input }) => { try { return await reviewVenueCorrection(ctx.user, input.correctionId, input.state); } catch (error) { return communityError(error); } }),

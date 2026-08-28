@@ -23,6 +23,7 @@ export const notificationDeliveryStates = ["queued", "delivered", "failed", "sup
 export const venueReviewStates = ["open", "reviewing", "accepted", "rejected"] as const;
 export const venueVerificationStates = ["unverified", "claimed", "verified"] as const;
 export const venueStaffRoles = ["manager", "editor"] as const;
+export const userStatuses = ["active", "suspended", "banned"] as const;
 
 /** Core identity record managed by Manus OAuth. */
 export const users = mysqlTable("users", {
@@ -32,8 +33,9 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", userRoles).default("player").notNull(),
+  status: mysqlEnum("status", userStatuses).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
@@ -349,13 +351,16 @@ export const reports = mysqlTable(
     detail: text("detail"),
     status: mysqlEnum("status", ["open", "reviewing", "closed"]).default("open").notNull(),
     assignedTo: int("assignedTo").references(() => users.id, { onDelete: "set null" }),
+    // The community member a sanction is applied to when the report is
+    // resolved (distinct from the reported subject itself).
+    subjectUserId: int("subjectUserId").references(() => users.id, { onDelete: "set null" }),
     resolutionReason: varchar("resolutionReason", { length: 300 }),
     resolutionNote: varchar("resolutionNote", { length: 600 }),
     sanction: mysqlEnum("sanction", ["none", "warning", "suspension", "ban"]).default("none").notNull(),
     resolvedAt: timestamp("resolvedAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
-  table => [index("reports_status_idx").on(table.status), index("reports_reporter_idx").on(table.reporterId)]
+  table => [index("reports_status_idx").on(table.status), index("reports_reporter_idx").on(table.reporterId), index("reports_subject_user_idx").on(table.subjectUserId)]
 );
 
 export type User = typeof users.$inferSelect;

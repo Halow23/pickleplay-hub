@@ -277,6 +277,13 @@ export default function Home() {
     startLogin();
   };
 
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("account") === "banned") {
+      toast.error("This account has been banned from PicklePlay.");
+      window.history.replaceState({}, "", "/");
+    }
+  }, []);
+
   const handleGameAction = (gameId: number, currentState: "confirmed" | "waitlisted" | null) => {
     if (!isAuthenticated) return askForSignIn();
     const game = dashboard?.games.find(item => item.id === gameId);

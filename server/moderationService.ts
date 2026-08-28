@@ -35,13 +35,26 @@ export function prepareReportAssignment(actor: { id: number; role: CommunityRole
   return { update: { assignedTo: actor.id, status: "reviewing" as const }, audit: { actorId: actor.id, eventType: "report_assigned", subjectType: "report", subjectId: reportId, metadata: JSON.stringify({ assignedTo: actor.id }) } };
 }
 
-export function prepareReportResolution(actor: { id: number; role: CommunityRole }, input: { reportId: number; resolutionReason: string; resolutionNote?: string; sanction: "none" | "warning" | "suspension" | "ban" }, resolvedAt = new Date()) {
+export function prepareReportResolution(actor: { id: number; role: CommunityRole }, input: { reportId: number; resolutionReason: string; resolutionNote?: string; sanction: "none" | "warning" | "suspension" | "ban"; subjectUserId?: number | null }, resolvedAt = new Date()) {
   requireReviewAccess(actor.role);
   const resolutionReason = input.resolutionReason.trim();
   if (resolutionReason.length < 3) throw new Error("A documented resolution reason is required.");
   if (!canApplyReportSanction(actor.role, input.sanction)) throw new Error(input.sanction === "ban" ? "Only platform administrators can apply a ban." : "Moderator access is required to apply this sanction.");
+  if (input.sanction === "suspension" || input.sanction === "ban") {
+    if (!input.subjectUserId) throw new Error("A community member is required before a suspension or ban can be applied.");
+    if (input.subjectUserId === actor.id) throw new Error("You cannot apply a sanction to your own account.");
+  }
   const resolutionNote = input.resolutionNote?.trim() || null;
-  return { update: { status: "closed" as const, assignedTo: actor.id, resolutionReason, resolutionNote, sanction: input.sanction, resolvedAt }, audit: { actorId: actor.id, eventType: "report_resolved", subjectType: "report", subjectId: input.reportId, metadata: JSON.stringify({ resolutionReason, sanction: input.sanction }) } };
+  const subjectUserId = input.subjectUserId || null;
+  return { update: { status: "closed" as const, assignedTo: actor.id, resolutionReason, resolutionNote, sanction: input.sanction, subjectUserId, resolvedAt }, audit: { actorId: actor.id, eventType: "report_resolved", subjectType: "report", subjectId: input.reportId, metadata: JSON.stringify({ resolutionReason, sanction: input.sanction, subjectUserId }) } };
+}
+
+// The user status a resolved sanction translates to; warning/none leave the
+// account untouched.
+export function sanctionUserStatus(sanction: "none" | "warning" | "suspension" | "ban"): "suspended" | "banned" | null {
+  if (sanction === "suspension") return "suspended";
+  if (sanction === "ban") return "banned";
+  return null;
 }
 
 export async function listReportsForReviewer<T>(repository: ModerationRepository<T>, role: CommunityRole) {

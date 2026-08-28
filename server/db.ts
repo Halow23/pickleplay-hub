@@ -21,7 +21,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { confirmedGameDelivery, organizerUpdateDelivery, persistInAppDeliveries, shouldDeliverInApp, waitlistPromotionDelivery } from "./notificationService";
-import { assertReportAvailableForTransition, assertOpenReportTransition, listReportsForReviewer, prepareReportAssignment, prepareReportResolution, setReportReviewStatus } from "./moderationService";
+import { assertReportAvailableForTransition, assertOpenReportTransition, listReportsForReviewer, prepareReportAssignment, prepareReportResolution, sanctionUserStatus, setReportReviewStatus } from "./moderationService";
 import { applyRsvpAction, IdempotencyConflictError } from "./rsvpService";
 
 function isDuplicateKeyError(error: unknown): boolean {
@@ -402,7 +402,7 @@ export async function assignCommunityReport(actor: { id: number; role: "user" | 
   return { updated: true };
 }
 
-export async function resolveCommunityReport(actor: { id: number; role: "user" | "player" | "organizer" | "moderator" | "admin" }, input: { reportId: number; resolutionReason: string; resolutionNote?: string; sanction: "none" | "warning" | "suspension" | "ban" }) {
+export async function resolveCommunityReport(actor: { id: number; role: "user" | "player" | "organizer" | "moderator" | "admin" }, input: { reportId: number; resolutionReason: string; resolutionNote?: string; sanction: "none" | "warning" | "suspension" | "ban"; subjectUserId?: number | null }) {
   const workflow = prepareReportResolution(actor, input);
   const db = await getDb();
   if (!db) throw new Error("Community data is temporarily unavailable.");
@@ -411,6 +411,12 @@ export async function resolveCommunityReport(actor: { id: number; role: "user" |
     assertReportAvailableForTransition(report, "resolve");
     await tx.update(reports).set(workflow.update).where(eq(reports.id, input.reportId));
     await tx.insert(auditEvents).values(workflow.audit);
+    // A suspension or ban must actually take effect on the account, not just
+    // be recorded on the report.
+    const userStatus = sanctionUserStatus(input.sanction);
+    if (userStatus && workflow.update.subjectUserId) {
+      await tx.update(users).set({ status: userStatus }).where(eq(users.id, workflow.update.subjectUserId));
+    }
   });
   return { updated: true };
 }

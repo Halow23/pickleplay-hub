@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { assertOpenReportTransition, assertReportAvailableForTransition, canApplyReportSanction, listReportsForReviewer, prepareReportAssignment, prepareReportResolution, setReportReviewStatus } from "./moderationService";
+import { assertOpenReportTransition, assertReportAvailableForTransition, canApplyReportSanction, listReportsForReviewer, prepareReportAssignment, prepareReportResolution, sanctionUserStatus, setReportReviewStatus } from "./moderationService";
 
 describe("moderation review service", () => {
   function makeStatusRepository(status: "open" | "reviewing" | "closed" | undefined) {
@@ -70,11 +70,24 @@ describe("moderation review service", () => {
   it("prepares documented moderator workflow writes and matching audit events", () => {
     const resolvedAt = new Date("2026-08-25T00:00:00Z");
     expect(prepareReportAssignment({ id: 3, role: "moderator" }, 9)).toEqual({ update: { assignedTo: 3, status: "reviewing" }, audit: { actorId: 3, eventType: "report_assigned", subjectType: "report", subjectId: 9, metadata: JSON.stringify({ assignedTo: 3 }) } });
-    expect(prepareReportResolution({ id: 3, role: "moderator" }, { reportId: 9, resolutionReason: "Guidance issued", resolutionNote: "Host acknowledged policy", sanction: "warning" }, resolvedAt)).toEqual({ update: { status: "closed", assignedTo: 3, resolutionReason: "Guidance issued", resolutionNote: "Host acknowledged policy", sanction: "warning", resolvedAt }, audit: { actorId: 3, eventType: "report_resolved", subjectType: "report", subjectId: 9, metadata: JSON.stringify({ resolutionReason: "Guidance issued", sanction: "warning" }) } });
+    expect(prepareReportResolution({ id: 3, role: "moderator" }, { reportId: 9, resolutionReason: "Guidance issued", resolutionNote: "Host acknowledged policy", sanction: "warning" }, resolvedAt)).toEqual({ update: { status: "closed", assignedTo: 3, resolutionReason: "Guidance issued", resolutionNote: "Host acknowledged policy", sanction: "warning", subjectUserId: null, resolvedAt }, audit: { actorId: 3, eventType: "report_resolved", subjectType: "report", subjectId: 9, metadata: JSON.stringify({ resolutionReason: "Guidance issued", sanction: "warning", subjectUserId: null }) } });
   });
 
   it("rejects undocumented resolutions and moderator bans before database writes", () => {
     expect(() => prepareReportResolution({ id: 3, role: "moderator" }, { reportId: 9, resolutionReason: " ", sanction: "warning" })).toThrow("documented resolution reason");
     expect(() => prepareReportResolution({ id: 3, role: "moderator" }, { reportId: 9, resolutionReason: "Policy breach", sanction: "ban" })).toThrow("Only platform administrators can apply a ban");
+  });
+
+  it("requires a subject member before a suspension or ban can be prepared", () => {
+    expect(() => prepareReportResolution({ id: 3, role: "admin" }, { reportId: 9, resolutionReason: "Repeated harassment", sanction: "suspension" })).toThrow("A community member is required");
+    expect(() => prepareReportResolution({ id: 3, role: "admin" }, { reportId: 9, resolutionReason: "Repeated harassment", sanction: "ban", subjectUserId: 3 })).toThrow("your own account");
+    expect(() => prepareReportResolution({ id: 3, role: "admin" }, { reportId: 9, resolutionReason: "Repeated harassment", sanction: "ban", subjectUserId: 12 })).not.toThrow();
+  });
+
+  it("maps sanctions onto enforceable account statuses", () => {
+    expect(sanctionUserStatus("suspension")).toBe("suspended");
+    expect(sanctionUserStatus("ban")).toBe("banned");
+    expect(sanctionUserStatus("warning")).toBeNull();
+    expect(sanctionUserStatus("none")).toBeNull();
   });
 });
