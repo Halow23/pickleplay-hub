@@ -25,3 +25,8 @@ This session is limited to opening the existing project preview in the user’s 
 
 - [x] Restore the synced dev server after it reports a missing `helmet` package at startup.
 - [x] Re-run project checks and verify the preview loads after the runtime repair.
+- [x] Diagnose the reported `{\"error\":\"OAuth callback failed\"}` login failure.
+- [x] Repair the OAuth callback flow without exposing or hardcoding secrets.
+- [x] Add or update Vitest coverage for the repaired callback behavior.
+- [x] Verify the login flow and save a checkpoint for the fix.
+- [x] Update the active-account status test so it asserts successful access when the database is available.
