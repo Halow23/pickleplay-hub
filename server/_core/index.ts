@@ -83,6 +83,11 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "1mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+  // Liveness endpoint for uptime checks and container orchestrators; must
+  // stay before the tRPC mount and not touch the database.
+  app.get("/api/health", (_req, res) => {
+    res.status(200).json({ status: "ok", uptime: process.uptime() });
+  });
   // tRPC API
   app.use(
     "/api/trpc",
@@ -108,6 +113,22 @@ async function startServer() {
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
   });
+
+  // Finish in-flight requests before the process exits so a rolling restart
+  // doesn't cut off tRPC mutations mid-transaction.
+  const shutdown = (signal: string) => {
+    console.log(`Received ${signal}, shutting down gracefully...`);
+    server.close(() => {
+      console.log("Server closed.");
+      process.exit(0);
+    });
+    setTimeout(() => {
+      console.warn("Forced shutdown after timeout with connections pending.");
+      process.exit(1);
+    }, 10_000).unref();
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 startServer().catch(console.error);

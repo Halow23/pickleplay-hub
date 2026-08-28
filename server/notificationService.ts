@@ -32,7 +32,13 @@ export function organizerUpdateDelivery(userId: number, gameId: number, message:
   return { userId, gameId, type: "organizer_update", title: "Organizer update", body: message };
 }
 
-type NotificationRepository = { insert: Function; update?: Function };
+// Minimal structural type over the drizzle builders so tests can pass a
+// stub without depending on drizzle generics (which are invariant here).
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type InsertBuilder = { values: (values: any) => Promise<any>; where?: never };
+type UpdateBuilder = { set: (values: any) => { where: (condition: any) => Promise<any> } };
+type NotificationRepository = { insert: (table: any) => InsertBuilder; update?: (table: any) => UpdateBuilder };
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export type NotificationPreferenceSnapshot = { inAppEnabled: boolean; gameUpdatesEnabled: boolean; waitlistUpdatesEnabled: boolean };
 
