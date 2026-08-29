@@ -1,7 +1,7 @@
 import { and, asc, count, eq, inArray } from "drizzle-orm";
-import { attendanceRecords, auditEvents, communityGroups, games, notifications, playerProfiles, rsvps, users, venues } from "../drizzle/schema";
+import { attendanceRecords, auditEvents, communityGroups, games, notificationPreferences, notifications, playerProfiles, rsvps, users, venues } from "../drizzle/schema";
 import { getDb } from "./db";
-import { organizerUpdateDelivery, persistInAppDeliveries } from "./notificationService";
+import { organizerUpdateDelivery, persistEmailDeliveries, persistInAppDeliveries } from "./notificationService";
 import { assertOrganizerGameAccess, assertSafeCapacityChange, canCreateOrganizerGame } from "./organizerPolicy";
 import { RSVP_CUTOFF_MS } from "../shared/const";
 
@@ -220,7 +220,14 @@ export async function cancelOrganizerGame(actor: OrganizerActor, gameId: number,
   const attendees = await db.select({ userId: rsvps.userId }).from(rsvps).where(and(eq(rsvps.gameId, gameId), inArray(rsvps.state, ["confirmed", "waitlisted"])));
   await db.transaction(async tx => {
     await tx.update(games).set({ status: "cancelled", cancellationReason, cancelledAt: new Date(), updatedBy: actor.id }).where(eq(games.id, gameId));
-    if (attendees.length) await persistInAppDeliveries(tx, attendees.map(attendee => organizerUpdateDelivery(attendee.userId, gameId, `Cancelled: ${game.title}. ${cancellationReason}`)));
+    if (attendees.length) {
+      const deliveries = attendees.map(attendee => organizerUpdateDelivery(attendee.userId, gameId, `Cancelled: ${game.title}. ${cancellationReason}`));
+      const notificationIds = await persistInAppDeliveries(tx, deliveries);
+      // Email only for members who opted in; in-app stays as-is for cancellations.
+      const preferenceRows = await tx.select({ userId: notificationPreferences.userId, emailEnabled: notificationPreferences.emailEnabled, gameUpdatesEnabled: notificationPreferences.gameUpdatesEnabled, waitlistUpdatesEnabled: notificationPreferences.waitlistUpdatesEnabled }).from(notificationPreferences).where(inArray(notificationPreferences.userId, attendees.map(attendee => attendee.userId)));
+      const emailPreferences = new Map(preferenceRows.map(preference => [preference.userId, { inAppEnabled: true, ...preference }]));
+      await persistEmailDeliveries({ insert: tx.insert.bind(tx), getEmailForUser: async userId => (await tx.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1))[0]?.email ?? null }, deliveries.map((delivery, index) => ({ delivery, notificationId: notificationIds[index] })), emailPreferences);
+    }
   });
   await writeAudit(actor.id, "game_cancelled", "game", gameId, { reason: cancellationReason, recipientCount: attendees.length });
   return { cancelled: true, recipientCount: attendees.length };

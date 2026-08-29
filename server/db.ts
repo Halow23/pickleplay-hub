@@ -21,13 +21,24 @@ import {
   venueSources,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
-import { confirmedGameDelivery, organizerUpdateDelivery, persistInAppDeliveries, shouldDeliverInApp, waitlistPromotionDelivery } from "./notificationService";
+import { confirmedGameDelivery, organizerUpdateDelivery, persistEmailDeliveries, persistInAppDeliveries, shouldDeliverInApp, waitlistPromotionDelivery } from "./notificationService";
 import { assertReportAvailableForTransition, assertOpenReportTransition, listReportsForReviewer, prepareReportAssignment, prepareReportResolution, sanctionUserStatus, setReportReviewStatus } from "./moderationService";
 import { applyRsvpAction, IdempotencyConflictError } from "./rsvpService";
 
 function isDuplicateKeyError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "ER_DUP_ENTRY";
 }
+
+/** Wraps a drizzle db/transaction with the user-email lookup the email channel needs. */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function withEmailLookup(executor: { select: any; insert: any; update: any }) {
+  return {
+    insert: executor.insert.bind(executor),
+    update: executor.update.bind(executor),
+    getEmailForUser: async (userId: number) => (await executor.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1))[0]?.email ?? null,
+  };
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -292,8 +303,11 @@ export async function respondToGame(userId: number, gameId: number, action: "joi
       findEarliestWaitlisted: async () => (await tx.select().from(rsvps).where(and(eq(rsvps.gameId, gameId), eq(rsvps.state, "waitlisted"))).orderBy(asc(rsvps.createdAt), asc(rsvps.id)).limit(1).for("update"))[0],
       promote: async rsvpId => { await tx.update(rsvps).set({ state: "confirmed", updatedAt: new Date() }).where(eq(rsvps.id, rsvpId)); },
       notify: async delivery => {
-        const preference = (await tx.select({ inAppEnabled: notificationPreferences.inAppEnabled, gameUpdatesEnabled: notificationPreferences.gameUpdatesEnabled, waitlistUpdatesEnabled: notificationPreferences.waitlistUpdatesEnabled }).from(notificationPreferences).where(eq(notificationPreferences.userId, delivery.userId)).limit(1))[0];
-        if (shouldDeliverInApp(preference || { inAppEnabled: true, gameUpdatesEnabled: true, waitlistUpdatesEnabled: true }, delivery.type)) await persistInAppDeliveries(tx, delivery);
+        const preference = (await tx.select({ inAppEnabled: notificationPreferences.inAppEnabled, emailEnabled: notificationPreferences.emailEnabled, gameUpdatesEnabled: notificationPreferences.gameUpdatesEnabled, waitlistUpdatesEnabled: notificationPreferences.waitlistUpdatesEnabled }).from(notificationPreferences).where(eq(notificationPreferences.userId, delivery.userId)).limit(1))[0];
+        const resolved = preference || { inAppEnabled: true, emailEnabled: false, gameUpdatesEnabled: true, waitlistUpdatesEnabled: true };
+        if (!shouldDeliverInApp(resolved, delivery.type)) return;
+        const [notificationId] = await persistInAppDeliveries(withEmailLookup(tx), delivery);
+        await persistEmailDeliveries(withEmailLookup(tx), [{ delivery, notificationId }], new Map([[delivery.userId, resolved]]));
       },
     }, { userId, gameId, gameTitle: game.title, capacity: game.capacity, action, idempotencyKey, startsAt: game.startsAt.getTime(), rsvpDeadlineAt: game.rsvpDeadlineAt?.getTime() });
   });
@@ -396,10 +410,14 @@ export async function sendGameUpdate(user: { id: number; role: "user" | "player"
 
   const attendees = await db.select({ userId: rsvps.userId }).from(rsvps).where(and(eq(rsvps.gameId, gameId), inArray(rsvps.state, ["confirmed", "waitlisted"])));
   if (attendees.length) {
-    const preferenceRows = await db.select({ userId: notificationPreferences.userId, inAppEnabled: notificationPreferences.inAppEnabled, gameUpdatesEnabled: notificationPreferences.gameUpdatesEnabled, waitlistUpdatesEnabled: notificationPreferences.waitlistUpdatesEnabled }).from(notificationPreferences).where(inArray(notificationPreferences.userId, attendees.map(attendee => attendee.userId)));
+    const preferenceRows = await db.select({ userId: notificationPreferences.userId, inAppEnabled: notificationPreferences.inAppEnabled, emailEnabled: notificationPreferences.emailEnabled, gameUpdatesEnabled: notificationPreferences.gameUpdatesEnabled, waitlistUpdatesEnabled: notificationPreferences.waitlistUpdatesEnabled }).from(notificationPreferences).where(inArray(notificationPreferences.userId, attendees.map(attendee => attendee.userId)));
     const preferencesByUser = new Map(preferenceRows.map(preference => [preference.userId, preference]));
-    const deliveries = attendees.map(attendee => organizerUpdateDelivery(attendee.userId, gameId, message)).filter(delivery => shouldDeliverInApp(preferencesByUser.get(delivery.userId) || { inAppEnabled: true, gameUpdatesEnabled: true, waitlistUpdatesEnabled: true }, delivery.type));
-    if (deliveries.length) await persistInAppDeliveries(db, deliveries);
+    const fallbackPreferences = { inAppEnabled: true, emailEnabled: false, gameUpdatesEnabled: true, waitlistUpdatesEnabled: true };
+    const deliveries = attendees.map(attendee => organizerUpdateDelivery(attendee.userId, gameId, message)).filter(delivery => shouldDeliverInApp(preferencesByUser.get(delivery.userId) || fallbackPreferences, delivery.type));
+    if (deliveries.length) {
+      const notificationIds = await persistInAppDeliveries(withEmailLookup(db), deliveries);
+      await persistEmailDeliveries(withEmailLookup(db), deliveries.map((delivery, index) => ({ delivery, notificationId: notificationIds[index] })), preferencesByUser);
+    }
     return { recipientCount: deliveries.length };
   }
   return { recipientCount: 0 };

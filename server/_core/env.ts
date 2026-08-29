@@ -7,6 +7,9 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  // Optional: when unset, email notifications are suppressed (in-app only).
+  smtpUrl: process.env.SMTP_URL ?? "",
+  emailFrom: process.env.EMAIL_FROM ?? "",
 };
 
 // An empty JWT secret lets anyone forge signed session tokens (including

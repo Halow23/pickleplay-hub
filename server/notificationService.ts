@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { notificationDeliveryRecords, notificationOutbox, notifications } from "../drizzle/schema";
+import { sendEmail } from "./emailService";
 
 /**
  * In-app is the only enabled channel for this MVP. A future email adapter can
@@ -37,15 +38,21 @@ export function organizerUpdateDelivery(userId: number, gameId: number, message:
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type InsertBuilder = { values: (values: any) => Promise<any>; where?: never };
 type UpdateBuilder = { set: (values: any) => { where: (condition: any) => Promise<any> } };
-type NotificationRepository = { insert: (table: any) => InsertBuilder; update?: (table: any) => UpdateBuilder };
+type NotificationRepository = { insert: (table: any) => InsertBuilder; update?: (table: any) => UpdateBuilder; getEmailForUser?: (userId: number) => Promise<string | null> };
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-export type NotificationPreferenceSnapshot = { inAppEnabled: boolean; gameUpdatesEnabled: boolean; waitlistUpdatesEnabled: boolean };
+export type NotificationPreferenceSnapshot = { inAppEnabled: boolean; emailEnabled?: boolean; gameUpdatesEnabled: boolean; waitlistUpdatesEnabled: boolean };
 
 export function shouldDeliverInApp(preferences: NotificationPreferenceSnapshot | undefined, type: InAppDelivery["type"]) {
   if (!preferences || !preferences.inAppEnabled) return false;
   if (type === "organizer_update") return preferences.gameUpdatesEnabled;
   return preferences.waitlistUpdatesEnabled;
+}
+
+/** Email mirrors the in-app gates plus its own master switch. */
+export function shouldDeliverEmail(preferences: NotificationPreferenceSnapshot | undefined, type: InAppDelivery["type"]) {
+  if (!preferences || !preferences.emailEnabled) return false;
+  return shouldDeliverInApp({ ...preferences, inAppEnabled: true }, type);
 }
 
 function insertIdFrom(result: unknown) {
@@ -73,4 +80,37 @@ export async function dispatchInAppOutbox(repository: NotificationRepository, no
   if (!repository.update) return false;
   await repository.update(notificationOutbox).set({ state: "delivered", attempts: 1, lockedAt: new Date(), lastError: null }).where(eq(notificationOutbox.notificationId, notificationId));
   return true;
+}
+
+/**
+ * Attempts the email channel for deliveries that already have an in-app
+ * notification row. Each attempt is recorded as a channel-specific delivery
+ * record (sent/failed/suppressed); the outbox row itself stays the in-app
+ * dispatch's. Requires repository.getEmailForUser — call sites without a
+ * user lookup simply never attempt email.
+ */
+export async function persistEmailDeliveries(
+  repository: NotificationRepository,
+  entries: Array<{ delivery: InAppDelivery; notificationId: number }>,
+  preferencesByUser: Map<number, NotificationPreferenceSnapshot> = new Map(),
+  emailSender: typeof sendEmail = sendEmail
+) {
+  if (!repository.getEmailForUser) return [];
+  const results: Array<{ userId: number; notificationId: number; state: "sent" | "failed" | "suppressed" }> = [];
+  for (const { delivery, notificationId } of entries) {
+    const preferences = preferencesByUser.get(delivery.userId);
+    if (!shouldDeliverEmail(preferences, delivery.type)) continue;
+    const to = await repository.getEmailForUser(delivery.userId);
+    if (!to) continue;
+    const state = await emailSender(to, `${delivery.title} · PicklePlay`, `${delivery.body}${delivery.gameId ? `\n\nOpen PicklePlay to see the game thread.` : ""}\n\nYou are receiving this because you opted into email updates on PicklePlay.`);
+    await repository.insert(notificationDeliveryRecords).values({
+      notificationId,
+      channel: "email",
+      state,
+      detail: state === "sent" ? `Delivered to ${to}.` : state === "suppressed" ? "Email is not configured on the server." : "The SMTP provider rejected the message.",
+      deliveredAt: state === "sent" ? new Date() : null,
+    });
+    results.push({ userId: delivery.userId, notificationId, state });
+  }
+  return results;
 }
