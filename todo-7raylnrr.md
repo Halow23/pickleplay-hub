@@ -36,3 +36,10 @@ This session is limited to opening the existing project preview in the user’s 
 - [x] Add or update Vitest coverage for the cleanup and empty states.
 - [x] Verify the cleaned site and save a checkpoint.
 - [x] Save a new checkpoint containing the verified mock-data cleanup and empty-state changes.
+- [x] Diagnose the Vite HMR failures for `client/src/index.css` and `client/src/pages/Home.tsx`.
+- [x] Repair the CSS or component syntax/import issue without changing unrelated behavior.
+- [x] Add or update regression coverage for the repaired error path.
+- [ ] Run checks, build, and preview verification, then save a checkpoint.
+- [x] Correct the active-account status test so it validates successful access with the live database-backed procedure.
+- [ ] Save a new checkpoint for the Vite and runtime-dependency repair after the verified fixes are in place.
+- [ ] Reopen the preview from the repaired checkpoint and confirm the homepage still loads cleanly.

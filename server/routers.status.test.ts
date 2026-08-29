@@ -23,9 +23,8 @@ function userContext(status: "active" | "suspended" | "banned", role: Authentica
 describe("account status enforcement", () => {
   it("lets active players through to protected procedures", async () => {
     const caller = appRouter.createCaller(userContext("active"));
-    // The request must pass the status middleware; without a live database
-    // the procedure then fails in the data layer rather than with FORBIDDEN.
-    await expect(caller.community.members()).rejects.not.toMatchObject({ code: "FORBIDDEN" });
+    const members = await caller.community.members();
+    expect(Array.isArray(members)).toBe(true);
   });
 
   it("blocks suspended players from community procedures", async () => {
