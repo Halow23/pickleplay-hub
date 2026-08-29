@@ -96,3 +96,17 @@ export async function setVenueVerificationState(actor: Actor, venueId: number, v
   await db.update(venues).set({ verificationState }).where(eq(venues.id, venueId));
   return { updated: true };
 }
+
+/** Admin-supplied map coordinates for a venue; both must be present or both null. */
+export async function setVenueCoordinates(actor: Actor, venueId: number, lat: number | null, lng: number | null) {
+  requireAdmin(actor);
+  const db = await getDb();
+  if (!db) throw new Error("Community data is temporarily unavailable.");
+  const venue = await db.select({ id: venues.id }).from(venues).where(eq(venues.id, venueId)).limit(1);
+  if (!venue[0]) throw new Error("This venue is unavailable.");
+  if ((lat === null) !== (lng === null)) throw new Error("Provide both latitude and longitude, or clear both.");
+  if (lat !== null && (lat < -90 || lat > 90)) throw new Error("Latitude must be between -90 and 90.");
+  if (lng !== null && (lng < -180 || lng > 180)) throw new Error("Longitude must be between -180 and 180.");
+  await db.update(venues).set({ lat: lat === null ? null : String(lat), lng: lng === null ? null : String(lng) }).where(eq(venues.id, venueId));
+  return { updated: true };
+}

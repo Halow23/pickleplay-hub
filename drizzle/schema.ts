@@ -8,6 +8,7 @@ import {
   timestamp,
   uniqueIndex,
   varchar,
+  decimal,
 } from "drizzle-orm/mysql-core";
 
 export const userRoles = ["user", "player", "organizer", "moderator", "admin"] as const;
@@ -78,9 +79,25 @@ export const venues = mysqlTable(
     visibility: mysqlEnum("visibility", gameVisibility).default("public").notNull(),
     verificationState: mysqlEnum("verificationState", venueVerificationStates).notNull().default("unverified"),
     accessibilityNote: varchar("accessibilityNote", { length: 220 }),
+    // Optional coordinates for the venue map; null until an admin supplies them.
+    lat: decimal("lat", { precision: 10, scale: 7 }),
+    lng: decimal("lng", { precision: 10, scale: 7 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   table => [uniqueIndex("venues_slug_unique").on(table.slug), index("venues_city_idx").on(table.city)]
+);
+
+export const directMessages = mysqlTable(
+  "direct_messages",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    senderId: int("senderId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    recipientId: int("recipientId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    body: varchar("body", { length: 2000 }).notNull(),
+    readAt: timestamp("readAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("direct_messages_pair_idx").on(table.senderId, table.recipientId, table.createdAt), index("direct_messages_recipient_idx").on(table.recipientId, table.createdAt)]
 );
 
 export const venueSources = mysqlTable("venue_sources", {

@@ -24,6 +24,7 @@ import {
   LockKeyhole,
   MapPin,
   Menu,
+  MessageCircle,
   MessagesSquare,
   MoreHorizontal,
   Plus,
@@ -34,15 +35,17 @@ import {
   X,
 } from "lucide-react";
 import { buildCalendar } from "@shared/ics";
+import { MessagesView } from "./HomeMessages";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-type ActiveView = "explore" | "play" | "groups" | "profile";
+type ActiveView = "explore" | "play" | "groups" | "messages" | "profile";
 
 const navItems: Array<{ id: ActiveView; label: string; icon: typeof Compass }> = [
   { id: "explore", label: "Explore", icon: Compass },
   { id: "play", label: "Play", icon: CalendarDays },
   { id: "groups", label: "Groups", icon: UsersRound },
+  { id: "messages", label: "Messages", icon: MessageCircle },
   { id: "profile", label: "Profile", icon: CircleUserRound },
 ];
 
@@ -505,6 +508,8 @@ export default function Home() {
             <div className="mt-8 rounded-[27px] border border-[#dfe1d5] bg-white/75 p-5 sm:flex sm:items-center sm:justify-between sm:p-6"><div className="flex gap-3"><div className="rounded-2xl bg-[#f0f2e9] p-3 text-[#2f6f5c]"><LockKeyhole className="h-5 w-5" /></div><div><h3 className="font-[Fraunces] text-xl font-semibold">Context before contact</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-[#68756d]">Groups show their purpose and visibility before membership. Private groups use owner approval before their member list is visible.</p></div></div><span className="mt-4 text-sm font-bold text-[#346e5a] sm:mt-0">Private membership is reviewed by the host</span></div>
           </section>
         )}
+
+        {activeView === "messages" && <MessagesView />}
 
         {activeView === "profile" && (
           <section>{!isAuthenticated ? <div className="mx-auto max-w-2xl rounded-[32px] border border-[#dfe1d5] bg-[#fffef9] p-8 text-center sm:p-12"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8f0e6] text-[#39705d]"><CircleUserRound className="h-7 w-7" /></div><h1 className="mt-6 font-[Fraunces] text-4xl font-semibold tracking-[-.05em]">Make pickleball feel more local.</h1><p className="mx-auto mt-4 max-w-md text-sm leading-6 text-[#6a786f]">Create a player profile to RSVP, join public groups, and choose how much of your community context is visible.</p><Button onClick={askForSignIn} className="mt-7 rounded-full bg-[#19473e] px-6 font-bold text-white hover:bg-[#123b33]">Sign in to create your profile</Button></div> : <div className="grid gap-6 lg:grid-cols-[.8fr_1.2fr]"><aside className="rounded-[30px] bg-[#19473e] p-7 text-white"><div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f2cd5f] font-[Fraunces] text-xl font-semibold text-[#173d35]">{getInitials(dashboard?.profile?.displayName || user?.name)}</div><p className="mt-5 text-[11px] font-extrabold uppercase tracking-[.14em] text-[#f6d36a]">Player profile</p><h1 className="mt-2 font-[Fraunces] text-4xl font-semibold tracking-[-.05em]">{dashboard?.profile?.displayName || user?.name || "Your profile"}</h1><p className="mt-3 text-sm leading-6 text-[#d4e2d4]">{dashboard?.profile?.bio || "Add a little about how you like to play so groups and hosts can make a warmer welcome."}</p><div className="mt-7 space-y-3 border-t border-white/15 pt-5"><div className="flex items-center justify-between text-sm"><span className="text-[#c6d7c7]">Skill context</span><span className="font-bold">{dashboard?.profile?.skillBand}</span></div><div className="flex items-center justify-between text-sm"><span className="text-[#c6d7c7]">Visibility</span><span className="font-bold capitalize">{dashboard?.profile?.visibility}</span></div><div className="flex items-center justify-between text-sm"><span className="text-[#c6d7c7]">Rating context</span><span className="font-bold">{dashboard?.profile?.ratingProvenance === "linked_provider" ? "Linked provider" : dashboard?.profile?.ratingProvenance === "self_described" ? "Self-described" : "Not shown"}</span></div></div></aside><div className="rounded-[30px] border border-[#dfe1d5] bg-[#fffef9] p-6 sm:p-8"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-[11px] font-extrabold uppercase tracking-[.14em] text-[#55685e]">Your settings</p><h2 className="mt-1 font-[Fraunces] text-3xl font-semibold tracking-[-.05em]">Keep it useful, keep it yours.</h2></div><button onClick={() => setProfileOpen(true)} className="rounded-full bg-[#19473e] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#123b33]">Edit profile</button></div><div className="mt-7 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl bg-[#f1f4ec] p-4"><p className="text-[10px] font-extrabold uppercase tracking-[.11em] text-[#5f6f66]">Home base</p><p className="mt-2 text-sm font-bold">{dashboard?.profile?.city}</p></div><div className="rounded-2xl bg-[#f1f4ec] p-4"><p className="text-[10px] font-extrabold uppercase tracking-[.11em] text-[#5f6f66]">Formats</p><p className="mt-2 text-sm font-bold">{dashboard?.profile?.preferredFormats}</p></div></div><div className="mt-6 rounded-2xl border border-[#e4e6dc] p-4"><div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 text-[#39705d]" /><p className="text-sm leading-6 text-[#597067]"><strong className="text-[#294e43]">Your rating is never inferred here.</strong> PicklePlay only displays the context you provide, such as self-described or linked-provider status. It does not calculate an authoritative rating.</p></div></div><section className="mt-6 rounded-2xl bg-[#f1f4ec] p-4"><p className="text-[10px] font-extrabold uppercase tracking-[.11em] text-[#5f6f66]">Attendance history</p><div className="mt-3 space-y-2">{dashboard?.attendanceHistory?.length ? dashboard.attendanceHistory.map(item => <div key={`${item.gameId}-${item.recordedAt}`} className="flex items-start justify-between gap-3 rounded-xl bg-white p-3 text-sm"><span>{item.title}{item.correctionNote && <small className="block text-xs text-[#7a6c5a]">{item.correctionNote}</small>}</span><span className="capitalize text-[#587368]">{item.status.replace("_", " ")}</span></div>) : <p className="text-sm text-[#68756d]">Attendance outcomes will appear after an organizer checks in a completed game.</p>}</div></section><button onClick={() => logout()} className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-[#a35843] hover:text-[#803f31]"><DoorOpen className="h-4 w-4" /> Sign out</button></div></div>}</section>
